@@ -1,0 +1,437 @@
+# 公文書くろぬり アーキテクチャ設計書
+
+状態: **確定版（PoC 反映済み、2026-11-13）**。
+
+- 「実証済み」と書いた事項は、コンソール PoC（net48 / x64 / PDFium 159.0.8152）で動作を確認した。実証済みコードの全文と実行ログは [`REFERENCE_CODE.md`](REFERENCE_CODE.md) にある。**該当モジュールを実装する時は、そこからコピーして始めること。**
+- 「未検証」と書いた事項は §17 にまとめてある。
+
+## 0. 確定した意思決定
+
+| # | 論点 | 決定 |
+|---|---|---|
+| Q1 | ランタイム | .NET Framework 4.8（x64） |
+| Q2 | 原本の保持 | 原本バイト列を確認用PDFに丸ごと埋め込む（SHA-256 で同一性を検証） |
+| Q3 | 確認用PDFの見せ方 | PDFium でページをベクター取込 + 半透明赤 + 番号・理由ラベル + 透かし（実証済み）。取込に失敗する文書だけ画像方式（§9.4） |
+| Q4 | 確定出力の既定 | 200dpi・カラー/グレー自動判定・**JPEG（品質85）と可逆圧縮の小さいほうをページごとに採用**。150/300dpi も選択可 |
+| Q5 | 黒塗りのないページ | 全ページを画像化する |
+| Q6 | フリーハンドの単位 | 自動グループ化 + 手動の結合・分割 |
+| Q7 | 理由プリセット | 汎用の典型を同梱し、EXE 隣の `settings.json` で編集可 |
+| Q8 | リボン | WPF 標準 `System.Windows.Controls.Ribbon` |
+| Q9 | 確定出力への理由表示 | 表示しない |
+| Q10 | パスワード付きPDF | 権限制限のみ（空ユーザーパスワード）は開く。パスワード必須は v1 非対応 |
+| Q11 | 印刷 | 付ける（§10） |
+
+設計側で決めた事項: ページ表示は**単一ページ表示**（連続スクロールなし）。覗き見キーは **Space 押下中**。第三者依存は PDFium のみ（PDFsharp・SkiaSharp・System.Text.Json は不採用）。
+
+## 1. 全体構成
+
+```
+Kuronuri.App (WPF, net48)
+  └─ Kuronuri.Core (net48。UI を持たないが PresentationCore の WIC・FormattedText・DocumentPaginator を使う)
+        └─ pdfium.dll (bblanchon.PDFium.Win32 159.0.8152, x64)
+```
+
+| Core の名前空間 | 役割 | 参照コード（REFERENCE_CODE.md） |
+|---|---|---|
+| `Pdfium` | P/Invoke 宣言、ロード、`PdfDoc`、`PdfiumWorker`（専用スレッド） | `PdfiumNative.cs` |
+| `Geometry` | `PageGeometry`、`CoordMap`（座標変換）、`Burner`（焼込） | `Geometry.cs` |
+| `Model` | `RedactionProject` / `RedactionItem` / `Shape` / `Reason`、JSON | `Model.cs` |
+| `Editing` | `UndoStack`、コマンド、自動グループ化 | （新規実装） |
+| `Export` | `MiniPdfWriter`、`FinalExporter`、`JpegCodec`、`LosslessCodec`、`OutputVerifier` | `MiniPdfWriter.cs` `FinalExporter.cs` `OutputVerifier.cs` |
+| `Hybrid` | `HybridWriter`、`HybridReader`、`TextOutline`、`HybridRasterWriter` | `Hybrid.cs` |
+| `Printing` | `RedactedPaginator` | `PrintPaginator.cs` |
+| `Rendering` | `PageRenderService`、`BitmapCache` | （新規実装。描画は `PageRenderer` を使う） |
+
+### 1.1 プロジェクト設定（実証済み）
+
+```xml
+<TargetFramework>net48</TargetFramework>
+<PlatformTarget>x64</PlatformTarget>
+<RuntimeIdentifier>win-x64</RuntimeIdentifier>   <!-- これで pdfium.dll が出力フォルダへ自動コピーされる -->
+<LangVersion>12.0</LangVersion>
+<Nullable>enable</Nullable>
+<ImplicitUsings>disable</ImplicitUsings>
+<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+<PackageReference Include="bblanchon.PDFium.Win32" Version="159.0.8152" />
+<Reference Include="System.Runtime.Serialization" />
+<Reference Include="System.Xaml" />
+<Reference Include="WindowsBase" />
+<Reference Include="PresentationCore" />
+<Reference Include="PresentationFramework" />
+<Reference Include="System.Windows.Controls.Ribbon" />
+<Reference Include="ReachFramework" />
+<Reference Include="System.Printing" />
+```
+
+- `pdfium.dll`: 7,830,016 バイト、SHA-256 `ba884cc5c6f2c3cd7c2ecca9dce36c2e341f78eb586abd691a2bbc017aa9871e`。リリース時にこの値を照合する。
+- record / init は `IsExternalInit` のポリフィル1行で動く（`Model.cs` 冒頭）。
+- App プロジェクトは `<UseWPF>true</UseWPF>` を使う（未検証。失敗したら上の `Reference` 列挙に切り替える）。
+
+### 1.2 配布物
+
+`Kuronuri.exe`、`Kuronuri.Core.dll`、`pdfium.dll`、`settings.json`（任意）、`LICENSE`、`THIRD-PARTY-NOTICES.txt`。合計約 8MB。単一EXE化（自己展開）はしない。
+
+## 2. 座標系（最重要・実証済み）
+
+### 2.1 正規座標 = 表示ページ座標
+
+- `/Rotate` と CropBox を適用した**見た目どおり**のページで、左上原点・X 右向き・Y 下向き・単位 pt（1/72 インチ）。
+- ページ寸法 `(Wd, Hd)` は `FPDF_GetPageWidthF` / `FPDF_GetPageHeightF` の値（回転適用済み）。ページごとに持つ。
+- 黒塗り箇所の座標は**すべてこの座標系の double** で保存する。ピクセルや画面座標を保存しない。
+
+### 2.2 ピクセルとの変換
+
+ビットマップを `wpx × hpx` で描画したとき、`sx = wpx / Wd`、`sy = hpx / Hd`、`xpx = xd × sx`、`ypx = yd × sy`。
+
+- 描画サイズ: `wpx = ceil(Wd × dpi / 72 − 1e-6)`、`hpx = ceil(Hd × dpi / 72 − 1e-6)`（`PageRenderer.PixelSize`）。
+- UI 表示も確定出力も印刷も、PDFium が回転適用済みで描いたビットマップしか扱わない。**この経路に回転計算は存在しない。**
+
+### 2.3 表示ページ座標 → PDF ユーザー空間（確認用PDFのベクター重ね描き専用）
+
+有効ボックスを `[x0, y0, x1, y1]`、回転を `R` とする。
+
+- 有効ボックス: `FPDF_GetPageBoundingBox`（`Left=x0, Bottom=y0, Right=x1, Top=y1`）。CropBox があればそれが返る。
+- 回転: `FPDFPage_GetRotation` の戻り値 0,1,2,3 = 0°,90°,180°,270°（時計回り）。
+
+| R | X | Y | 行列 (a b c d e f) |
+|---|---|---|---|
+| 0 | `x0 + xd` | `y1 − yd` | `1 0 0 −1 x0 y1` |
+| 90 | `x0 + yd` | `y0 + xd` | `0 1 1 0 x0 y0` |
+| 180 | `x1 − xd` | `y0 + yd` | `−1 0 0 1 x1 y0` |
+| 270 | `x1 − yd` | `y1 − xd` | `0 −1 −1 0 x1 y1` |
+
+`X = a·xd + c·yd + e`、`Y = b·xd + d·yd + f`。行列の合成は `CoordMap.Compose(first, then)`。
+
+実証内容: 回転 0/90/180/270、A4/A3 混在、MediaBox 原点ずれ + CropBox のテストPDFで、(1) 式から求めた位置に描画ピクセルが存在、(2) `FPDF_PageToDevice` / `FPDF_DeviceToPage` と一致、(3) 確認用PDFの赤領域が同じ表示位置に出る、を全ページで確認した。この変換は `CoordMap` だけに置く。
+
+## 3. PDFium 層（実証済み）
+
+- **ロード**: EXE のフォルダの `pdfium.dll` を絶対パスで `LoadLibraryEx(path, 0, LOAD_WITH_ALTERED_SEARCH_PATH)` してから `FPDF_InitLibrary()` を呼ぶ。以後の `DllImport("pdfium")` はロード済みのモジュールに解決される。
+- **呼び出し規約**: x64 のみなので関数側の指定は不要。コールバックのデリゲートには `[UnmanagedFunctionPointer(CallingConvention.Cdecl)]` を付け、文書を閉じるまでフィールドで保持する。
+- **専用スレッド**: PDFium はスレッドセーフではない。`PdfiumWorker` が1本のスレッドとジョブキューを持ち、全 P/Invoke をそこで実行する。API は `Task<T> Run<T>(Func<T>)`。古い描画要求は `CancellationToken` で捨てる（新規実装）。
+- **原本の読み込み**: `PdfDoc.FromStream`。読取専用・`FileShare.Read` の `FileStream` を `FPDF_LoadCustomDocument` のコールバックで読む。`FPDF_FILEACCESS` 構造体はアンマネージドメモリに置き、文書を閉じるまで保持する。
+- **メモリからの読み込み**: `PdfDoc.FromBytes`。`byte[]` をピン留めして `FPDF_LoadMemDocument64` に渡す。確認用PDFから取り出した原本に使う。
+- **描画**: `PageRenderer.RenderFull`。外部バッファ（BGRx、ストライド = 幅×4）を `FPDFBitmap_CreateEx` に渡し、白で塗ってから `FPDF_RenderPageBitmap` を呼ぶ。
+- **描画フラグ**: 画面・確定出力・印刷で**同一**の `FPDF_ANNOT` のみ。LCD 文字描画は付けない。
+- **保存**: `PdfDoc.SaveTo(stream, flags)`。`FPDF_FILEWRITE`（`Version = 1`）のコールバックで受ける。
+- **エラー**: ハンドルが 0 なら `FPDF_GetLastError`（4 = パスワード必須）を読み、種別だけを持つ例外にする。メッセージにパスを入れない。
+
+使用する全関数の宣言は `REFERENCE_CODE.md` の `PdfiumNative.cs` にある。`FPDF_BOOL` は `int`、`unsigned long` は `uint`、ワイド文字列は UTF-16LE。
+
+## 4. データモデル
+
+リスト・理由・ジャンプ・Undo の単位は「黒塗り箇所」`RedactionItem`。1箇所は複数の図形を持てる。モデルは不変（record）。
+
+```csharp
+public readonly record struct Point2(double X, double Y);
+public abstract record Shape;
+public sealed record RectShape(double X, double Y, double W, double H) : Shape;
+public sealed record StrokeShape(IReadOnlyList<Point2> Points, double WidthPt) : Shape;
+public sealed record Reason(string Code, string Label, string FreeText);          // 例: ("1号","個人情報","")
+public sealed record RedactionItem(Guid Id, int PageIndex, IReadOnlyList<Shape> Shapes, Reason? Reason);
+public enum RedactionStyle { Black, WhiteWithBorder }
+public sealed record PageInfo(double Width, double Height, int Rotation);          // 表示寸法(pt)。Rotation は記録のみ
+public sealed record OriginalInfo(string Sha256, long Length, string FileName);
+public sealed record RedactionProject(OriginalInfo Original, IReadOnlyList<PageInfo> Pages,
+    IReadOnlyList<RedactionItem> Items, RedactionStyle Style);
+```
+
+- **表示番号**: 保存しない。`(PageIndex, Bounds.Top, Bounds.Left)` の昇順で毎回計算する（`ShapeMath.InDisplayOrder`）。
+- **Bounds**: 図形の外接矩形（ストロークは太さの半分を加える）から導出する（`ShapeMath.Bounds`）。
+- **スタイル**: 文書単位で1つ（黒塗り / 白塗り+黒枠）。箇所ごとには持たない。
+- **注意**: record の等値比較はリストを参照で比べる。箇所の同一性は `Id` で判定する。
+
+### 4.1 保存形式（`kuronuri-project.json`、UTF-8、実証済み）
+
+```json
+{"app":"kuronuri","schema":1,"appVersion":"1.0.0",
+ "original":{"sha256":"…","length":123456,"fileName":"…"},
+ "pages":[{"w":595,"h":842,"rot":0}],
+ "style":"black",
+ "items":[
+  {"id":"73c1cf7a-ce1c-4888-bde7-35499e9fc79a","page":0,
+   "reason":{"code":"1号","label":"個人情報","text":""},
+   "shapes":[{"t":"rect","x":100,"y":200,"w":150,"h":20}]},
+  {"id":"…","page":0,"reason":null,
+   "shapes":[{"t":"stroke","sw":14.173228346456693,"pts":[10,20,15.5,22]}]}
+ ]}
+```
+
+- `DataContractJsonSerializer` を使う。DTO（`[DataContract]`、`Order` 指定）とドメインモデルを分けて相互変換する（`ProjectJson`）。
+- 図形は `t`（`rect` / `stroke`）で判別する1つの DTO。使わないフィールドは `EmitDefaultValue = false` で出力しない。
+- `style` は `black` / `whiteBorder`。`reason` は未設定なら `null`。`pts` は x, y の交互配列。
+- double は往復で完全一致する。日本語はそのまま UTF-8 で出る。`/` は `\/` と出力されるが正しい JSON。
+- 読込時に `app` が `kuronuri` でない、または `schema` が未知なら開かない。
+
+### 4.2 フリーハンドの自動グループ化
+
+- フリーハンドツールを使い続けている間、「編集中の箇所」を1つ持つ。
+- 新しいストロークの外接矩形を 6pt 広げたものが、編集中の箇所の Bounds と交差し、同じページなら、その箇所に追加する。そうでなければ新しい箇所を作って編集中にする。
+- ツール切替・選択変更・ページ移動・Enter/Esc で編集中の箇所を閉じる。時間による判定はしない。
+- 手動操作: 「結合」（複数箇所 → 1箇所。理由は表示順で先頭のものを引き継ぐ）、「分割」（1箇所 → 図形ごとの箇所）。同一ページ内のみ。
+
+### 4.3 ストローク
+
+- 太さは mm で指定し（既定の選択肢 2 / 4 / 6 / 10 mm）、内部は pt（`mm × 72 / 25.4`）。
+- マウスアップ時に Ramer–Douglas–Peucker 法で間引く（許容 0.25pt）。被覆が減らないよう、太さに 0.5pt を加える。
+- 端点・接合部は丸。点が1つだけのストロークは円として扱う（`Burner` と `HybridWriter` は対応済み）。
+
+## 5. Undo / Redo
+
+- コマンドは3種類だけ: `AddItem(item)`、`RemoveItem(item)`、`ReplaceItem(before, after)`。複数をまとめる `Composite`。
+- ストローク追加・移動・リサイズ・理由変更は `ReplaceItem`、結合・分割は `Composite`。
+- ドラッグ1回が1コマンド（マウスアップで確定）。自由記述の理由はフォーカスが外れた時に1コマンド。
+- Undo / Redo の後、対象の箇所を選択してそのページへ移動する。
+- 履歴は最大 500 件。ファイルには保存しない。文書の「変更あり」は保存時点の履歴位置と比較して判定する。
+
+## 6. 表示・キャッシュ・メモリ
+
+- **ビュー状態は1つ**: `ViewState { PageIndex, Zoom, OffsetX, OffsetY }` を左右のペインが共有する。同期はイベントのやり取りではなく、同じ状態を描くことで保証する。
+- **左右で同じビットマップを共有**: 右ペインは同じ原本ビットマップの上に黒塗りを WPF の図形で重ねる。覗き見は重ね描きの不透明度を 0.25 にするだけ。
+- **描画解像度**: 画面のデバイスピクセルに合わせて描く（ズーム × DPI スケール）。拡大縮小の補間に頼らない。
+- **大きなビットマップ**: ページ全体が 16MP を超えるズームでは、表示領域 + 余白だけを描画する（`FPDF_RenderPageBitmap` の `start_x` / `start_y` を負にして部分描画）。スクロール停止後に再描画する。
+- **キャッシュ**: `BitmapCache` はバイト数予算つき LRU。予算は「空き物理メモリの 25%、上限 512MB、下限 96MB」。現在ページと前後1ページを保持対象にする。
+- **サムネイル**: 幅 120px。`VirtualizingStackPanel` で仮想化し、表示された時に描画する。LRU で 200 枚まで。
+- **バッファ**: `NativeBuffer`（`Marshal.AllocHGlobal`、解放前にゼロクリア）。確定出力・印刷では1ページ分を使い回す。
+- **WIC ビットマップの解放**: `BitmapSource.Create` が作るコピーは GC でしか解放されない。連続処理では 8 ページごとに `GC.Collect(); GC.WaitForPendingFinalizers();` を呼ぶ（実証済み: 300 ページでピーク約 150MB で平坦。呼ばないと 600MB 超まで膨らむことがある）。
+
+## 7. 確定出力（実証済み）
+
+`FinalExporter.Export`。1ページずつ順番に処理し、メモリには常に1ページ分しか持たない。
+
+1. **描画**: `PageRenderer.PixelSize` でサイズを決め、BGRx バッファに描く。1ページが 60MP を超える場合は dpi を自動で下げ（A0・300dpi 指定 → 約 197dpi）、完了時に知らせる。
+2. **焼込**（`Burner.Burn`）: バッファに直接書き込む。アンチエイリアスなし。
+   - 矩形: 左上は切り捨て、右下は切り上げ、さらに外側へ 1px 広げる。
+   - ストローク: 各線分を「ピクセル中心と線分の距離 ≤ 半径」で塗る。半径は `ceil(太さ/2 × スケール) + 1` px。
+   - 塗った直後に、広げる前の真の図形範囲に黒でない画素が残っていないか数える。0 でなければ例外。
+   - 白塗り + 黒枠: 全図形を黒で塗った後、枠の太さ（`max(2px, ceil(0.75pt))`）だけ縮めた形を白で塗る。重なった図形の外周だけが枠になる。
+3. **色判定**（`JpegCodec.DetectColor`）: チャンネル差 > 40 の画素が `max(50, 画素数/50000)` 個以上ならカラー、それ以外はグレー。
+4. **JPEG 化**（`JpegCodec.Encode`）: `JpegBitmapEncoder`、品質 85。グレーは `Gray8` に変換して渡す。成分数を SOF マーカーで確認する。
+5. **可逆圧縮との比較**（`LosslessCodec.TryEncode`）: 生の Gray8 / RGB24 を zlib（予測なし）で圧縮し、JPEG より小さければそちらを使う。
+   - 先に 8 本の帯（各 64 行）を最速レベルで圧縮して全体サイズを見積もり、JPEG の 0.9 倍以上なら本圧縮をしない（スキャン文書での無駄な時間を避ける）。
+   - net48 に `ZLibStream` はないので、`DeflateStream` に zlib ヘッダ（`78 9C`）と Adler-32 を付ける（`MiniPdfWriter.ZlibCompress`）。
+6. **書き出し**（`MiniPdfWriter`）: 出力ストリームへページごとに追記する。
+
+### 7.1 出力PDFの構造（これ以外は書かない）
+
+```
+%PDF-1.7 + バイナリコメント（15 バイト）
+ページごとに3つ（画像, 内容, ページの順）:
+  << /Type /XObject /Subtype /Image /Width w /Height h /ColorSpace /DeviceRGB|/DeviceGray
+     /BitsPerComponent 8 /Filter /DCTDecode|/FlateDecode /Length n >> stream … endstream
+  << /Length n >> stream  q Wd 0 0 Hd 0 0 cm /Im0 Do Q  endstream
+  << /Type /Page /Parent 2 0 R /MediaBox [0 0 Wd Hd] /Resources << /XObject << /Im0 i 0 R >> >> /Contents c 0 R >>
+2 0 obj  << /Type /Pages /Count N /Kids [...] >>
+1 0 obj  << /Type /Catalog /Pages 2 0 R >>
+xref / trailer << /Size 3N+3 /Root 1 0 R >> / startxref / %%EOF
+```
+
+- Info 辞書・XMP・ID・しおり・注釈・添付・`/Rotate` は**書かない**。オブジェクト数は必ず `2 + 3N`。
+- 辞書は必ず1行で書く（検証がこの形に依存する）。数値は `0.####` 形式・不変カルチャ。
+
+### 7.2 保存先
+
+- 原本・現在開いている確認用PDFと同じパスは拒否する。既定名は `<元の名前>_開示用.pdf`。
+- 保存先フォルダに `<名前>.part` で書き、検証（§8）に合格したら改名する。失敗・中断時は削除する。
+
+### 7.3 実測値（合成データ・開発機。実文書の値ではない）
+
+- 速度: 単純なページで 1 ページ 40〜55ms（200dpi）。A0 1ページは約 0.5 秒。
+- 余白の多いカラーページ: JPEG のみ 約 70KB/ページ → 自動選択で 約 15KB/ページ。
+- 文字が密なグレーページ（200dpi）: JPEG 約 1MB、可逆 約 670KB。ノイズを加えたスキャン風ページでは JPEG 約 1.2MB、可逆 約 2.1MB で、JPEG が選ばれる。
+- 実文書でのサイズと所要時間は未計測（§17）。
+
+## 8. 出力検証（確定出力の直後に必ず実行・実証済み）
+
+`OutputVerifier`。1つでも不合格なら出力ファイルを削除し、エラーを表示する。合格時は「検証済み」と表示する。
+
+| 種別 | 内容 |
+|---|---|
+| 焼込 | JPEG 化の前に、バッファ上で図形の内側が全て黒であることを確認（`Burner.Burn` の戻り値が 0） |
+| 構造（`VerifyStructure`） | xref をたどって全オブジェクトを読む。各オブジェクトは §7.1 の5種の形に正規表現で**完全一致**すること。オブジェクトは隙間なく連続し、ヘッダ直後から始まり、`%%EOF` の後に何もないこと。JPEG は `FFD8`…`FFD9`、可逆は展開後の長さと Adler-32 が一致すること |
+| PDFium で再オープン（`VerifyWithPdfium`） | ページ数・各ページ寸法が一致、回転 0、文字数 0、オブジェクトは画像1個、注釈 0、添付 0、しおりなし、メタデータ8項目が空 |
+| ピクセル | 100dpi で再描画し、図形の内側の標本点が黒（各チャンネル ≤ 48）または白（≥ 207）であること |
+
+- 実証内容: テストPDFに仕込んだ秘密文字列（本文・メタデータ・しおり・注釈・添付・XMP の 11 箇所）が、出力のバイト検索（ASCII / UTF-16）で 0 件。`%%EOF` の後にデータを足した改ざんと、焼込をしていない出力を、検証が不合格にすること。
+- PoC の検証はファイル全体をメモリに読む。製品では xref とオブジェクト先頭だけをシークして読む形に直す（大きな出力でメモリを使わないため）。
+
+## 9. 確認用PDF（ハイブリッドPDF・実証済み）
+
+### 9.1 構造
+
+`HybridWriter.Build`。
+
+1. `FPDF_CreateNewDocument` で新規文書を作り、`FPDF_ImportPages(dst, src, null, 0)` で原本の全ページを取り込む。寸法・回転・本文テキストはそのまま残る（上司のビューアで検索できる）。
+2. 各ページに、ページ内容として次を描き足し、`FPDFPage_GenerateContent` を呼ぶ。座標は §2.3 の行列でユーザー空間に変換する。
+   - 矩形: 赤の半透明塗り（アルファ 64/255）+ 赤枠 1pt。
+   - ストローク: 赤の半透明線（アルファ 96/255）、端点・接合部は丸。
+   - ラベル: 「表示番号 + 号番号」（例 `3 1号`）を箇所の左上、8pt、赤。
+   - 透かし: 「【庁内確認用・外部交付厳禁】」をページ中央に −30° で。幅は `0.85 × min(Wd, Hd)`、赤のアルファ 48/255。
+3. 添付を2つ追加する（`FPDFDoc_AddAttachment` + `FPDFAttachment_SetFile`）。
+   - `original.pdf`: 原本のバイト列そのまま。
+   - `kuronuri-project.json`: §4.1。
+4. `FPDF_SaveAsCopy`（`FPDF_NO_INCREMENTAL`）で保存する。
+
+**日本語文字**（`TextOutline`）: `FormattedText.BuildGeometry` でアウトライン化し、`FPDFPath_MoveTo / LineTo / BezierTo` のパスとして描く。フォントは埋め込まれず、テキストオブジェクトも増えない。フォント指定は `Yu Gothic UI, Meiryo, MS Gothic`（フォールバック列）。
+
+**透かしの共有**: 透かしは一時的な1ページ文書に1回だけ描き、`FPDF_NewXObjectFromPage` で取り込み、各ページには `FPDF_NewFormObjectFromXObject` + `FPDFPageObj_Transform` で配置する。ページごとにパスを描く方式（約 25KB/ページ）と見た目が完全一致し、サイズは文書全体で約 25KB の1回分で済む。
+
+実証内容: 全回転のページで赤領域が正しい表示位置に出ること。内容ストリームの末尾で座標変換を戻していないページでも位置がずれないこと。既定名は `<元の名前>_庁内確認用.pdf`。
+
+### 9.2 読み込み（`HybridReader.TryRead`）
+
+1. `FPDFDoc_GetAttachmentCount` / `FPDFAttachment_GetName` / `FPDFAttachment_GetFile` で添付を調べる。上記2つの名前がそろい、JSON の `app` と `schema` が正しければ確認用PDFとみなす。
+2. `original.pdf` の長さと SHA-256 を JSON と照合する。不一致なら「破損」として開かない。
+3. 取り出した原本を PDFium で開き、JSON から箇所を復元する。視覚層は使わない。
+4. 条件に合わないPDFは「新しい原本」として開く。
+
+### 9.3 保存
+
+- 毎回、埋め込み原本から視覚層を作り直す。視覚層に追記はしない（実証済み: 3回再保存してもサイズが 1 バイトも変わらず、原本のハッシュも不変）。
+- サイズは「原本の約2倍 + 透かし約 25KB + ラベル 1箇所あたり約 1KB」。
+- 上書きは同じフォルダに `.part` で書いてから置き換える。保存直後に §9.2 の手順で読み戻し、原本のハッシュ一致・ページ数一致・JSON 一致を確認する。
+- 原本PDF（確認用でないもの）を開いている時の「上書き保存」は、必ず「名前を付けて保存」になる。
+
+### 9.4 予備方式（画像の視覚層・実証済み）
+
+`HybridRasterWriter.Build`。`FPDF_ImportPages` が失敗する、または §9.3 の読み戻し確認に失敗した文書では、自動的にこの方式で保存し、「画像方式で保存しました」と知らせる。
+
+- `MiniPdfWriter` で、ページ画像（150dpi・JPEG 品質 75）+ 赤の重ね描き（`/ExtGState` の `/ca` `/CA`）を書く。ページは表示向きなので、Y 座標は `Hd − yd` で反転するだけ。
+- 添付は `/Names << /EmbeddedFiles << /Names [(kuronuri-project.json) … (original.pdf) …] >> >>` に書く。名前はバイト順に並べること。埋め込みストリームは無圧縮。
+- PDFium の添付 API で読み戻せることを確認済み。読み込み手順は §9.2 と共通。
+- ラベルと透かしは PoC では描いていない。製品では `TextOutline` と同じアウトラインを PDF の `m` / `l` / `c` / `h` / `f` 演算子に変換して描く。
+
+### 9.5 採用しなかった方式（記録）
+
+増分保存（`FPDF_SaveAsCopy` の `FPDF_INCREMENTAL`）で原本の末尾に追記する方式。旧式 xref のテストPDFでは原本がそのまま先頭に残り、追記は約 3.5KB で済んだ。ただし xref ストリーム形式の原本と、Acrobat などでの互換性を検証できていないため採用しない。将来のサイズ最適化の候補。
+
+## 10. 印刷
+
+- WPF の `PrintDialog.PrintDocument(paginator, ジョブ名)` と独自の `DocumentPaginator` を使う。ページは要求された時に1枚ずつ作る。STA スレッドで実行する。
+- **ジョブ名は固定文字列 `Kuronuri`**。ファイル名を入れない（スプーラの履歴に残るため）。
+- 2つのモード:
+  - **黒塗り済みを印刷**（既定）: `RedactedPaginator`。確定出力と同じ「描画 → 焼込」をしたビットマップだけを送る。スプールには黒塗り後の画像しか入らない。実証済み（XPS への書き出しで、5 ページが要求順に1枚ずつ生成されることを確認）。
+  - **確認用を印刷**: 原本ビットマップの上に、半透明赤・ラベル・透かしを WPF の描画（`DrawingContext`）で重ねる。スプールに原本内容が入るため、実行前に警告を出す。未検証。
+- 解像度は既定 300dpi（設定で 200/300）。
+- 用紙への配置: 等倍優先で中央に置き、はみ出す場合だけ縮小する。拡大はしない。ページと用紙の縦横が違う場合は 90° 回転して収める。用紙サイズは `PrintDialog.PrintableAreaWidth / Height` から取る。
+- 印刷は読み取りのみで、文書の状態を変えない。8 ページごとに GC を呼ぶ（§6）。
+- 注意: スプールファイルは OS が管理し、アプリからは消せない（§13）。
+
+## 11. UI 仕様
+
+### 11.1 画面構成
+
+```
+┌ リボン（ホーム / 表示）──────────────────────────────┐
+├ ページ一覧 ┬ 左: 原本（閲覧のみ） ┬ 右: 黒塗りプレビュー（編集） ┬ 箇所リスト ┤
+└ ステータスバー: ページ n/N ・ ズーム ・ 箇所数 ・ 理由未設定の数 ・ 状態 ─────────┘
+```
+
+- **ホーム**: 開く / 確認用として保存 / 名前を付けて保存 / 確定出力 / 印刷 ｜ 元に戻す / やり直し ｜ 選択 / 矩形 / フリーハンド / 消しゴム / 太さ ｜ 現在の理由 ｜ 結合 / 分割 / 削除 ｜ スタイル（黒塗り / 白塗り+黒枠）
+- **表示**: 2画面 / 1画面 ｜ ズーム（拡大・縮小・100%・幅に合わせる・全体） ｜ ページ一覧・箇所リストの表示切替
+- 1画面モードでは右ペインだけを表示する。
+- 左ペインは編集できない。右ペインと同じページ・ズーム・スクロール位置を常に表示する。
+- ウィンドウは `RibbonWindow`（標準 Ribbon のアセンブリが解決できることは確認済み）。
+
+### 11.2 ツール
+
+| ツール | 操作 |
+|---|---|
+| 選択 | クリックで箇所を選択。ドラッグで移動。矩形1つだけの箇所はハンドルでリサイズ。Shift/Ctrl で複数選択 |
+| 矩形 | ドラッグで作成。3pt 未満は無視 |
+| フリーハンド | ドラッグで描画。§4.2 の規則で箇所にまとめる |
+| 消しゴム | クリックした図形を箇所から削除。図形がなくなった箇所は削除 |
+
+新しい箇所は、リボンの「現在の理由」を引き継ぐ。画面上の重ね描きは、焼込より必ず小さいか等しい範囲になる（焼込が外側へ広げるため）。
+
+### 11.3 箇所リスト
+
+- 列: 番号、ページ、理由（プリセットのコンボ + 自由記述）、種別アイコン。
+- クリックで該当ページへ移動し、箇所を中央に表示して1秒間ハイライトする。
+- 複数選択して理由を一括変更できる。理由未設定の行は警告色。
+
+### 11.4 ショートカット
+
+| キー | 動作 | キー | 動作 |
+|---|---|---|---|
+| Ctrl+O | 開く | V / R / B / E | 選択 / 矩形 / フリーハンド / 消しゴム |
+| Ctrl+S | 確認用として保存 | [ / ] | 太さを細く / 太く |
+| Ctrl+Shift+S | 名前を付けて保存 | Delete | 選択箇所を削除 |
+| Ctrl+E | 確定出力 | Ctrl+G / Ctrl+Shift+G | 結合 / 分割 |
+| Ctrl+P | 印刷 | PageUp / PageDown | 前 / 次のページ |
+| Ctrl+Z / Ctrl+Y | 元に戻す / やり直し | Ctrl+ホイール | ズーム |
+| Space（押下中） | 黒塗りを透過して覗く | Ctrl+0 / Ctrl+1 / Ctrl+2 | 全体 / 100% / 幅に合わせる |
+| F6 | 2画面 / 1画面 | Enter / Esc | 編集中の箇所を閉じる |
+
+ホイールは縦スクロール。ページの端でさらに回すと前後のページへ移る。中ボタンドラッグで移動。ズームは 10%〜800%。
+
+## 12. 設定とプリセット
+
+- `settings.json` を EXE と同じフォルダに置く。なければ既定値で動く。書き込めないフォルダでもエラーにしない。
+- 内容: 理由プリセット、既定 dpi、JPEG 品質、既定スタイル、ブラシ太さの選択肢、印刷 dpi。文書に関する情報（最近使ったファイルなど）は**保存しない**。
+- 既定の理由プリセット（号番号は自治体ごとに違うため編集前提）:
+
+| code | label |
+|---|---|
+| 1号 | 個人情報 |
+| 2号 | 法人等情報 |
+| 3号 | 公共安全情報 |
+| 4号 | 審議・検討情報 |
+| 5号 | 事務事業情報 |
+| 6号 | 法令秘情報 |
+
+## 13. セキュリティ・残存データ
+
+- 一時ファイルなし。レジストリ・AppData への書き込みなし。外部通信なし。
+- ログは既定で出さない。未処理例外は種別だけをダイアログに出して終了する。
+- ファイルダイアログは「最近使ったファイル」に登録しない（`IFileDialog` の `FOS_DONTADDTORECENT`。net48 の `OpenFileDialog` にはこの指定がないので COM 相互運用で実装する。未検証）。
+- クリップボードに文書内容を置かない。
+- ピクセルバッファと埋め込み原本のメモリは解放前にゼロクリアする。
+- `pdfium.dll` は絶対パスで読み込む。
+- アプリから制御できないもの（利用の手引きに書く）: ページファイル、休止ファイル、クラッシュダンプ、ファイルダイアログが OS に残す履歴、印刷スプール。
+
+## 14. エッジケース
+
+| ケース | 扱い |
+|---|---|
+| パスワード必須のPDF | 開かずに「非対応」と表示（`FPDF_GetLastError` = 4） |
+| 権限制限のみのPDF | 開く |
+| 壊れたPDF | PDFium が開ければ使う。開けなければ種別だけ表示 |
+| ページ取込に失敗するPDF | 確認用保存を画像方式（§9.4）に自動で切り替える |
+| XFA フォーム | 検知して「正しく表示できない可能性」を警告 |
+| 原本に添付ファイル・しおりがある | 確定出力には含まれないことを初回に知らせる |
+| 0 ページ・巨大ページ | 0 ページは開かない。巨大ページは dpi を自動で下げる |
+| 原本が 300MB 超 | 確認用保存の前に、メモリ使用量とサイズが約2倍になることを警告 |
+| 原本が 4GB 以上 | 非対応（`FPDF_FILEACCESS` の長さが 32bit のため） |
+| 確認用PDFが他ソフトで編集された | 添付と JSON が無事でハッシュが一致すれば開く |
+
+## 15. テスト戦略
+
+- テスト用PDFは `TestPdfFactory`（`REFERENCE_CODE.md`）で生成する。回転 0/90/180/270、サイズ混在、MediaBox 原点ずれ + CropBox、座標変換を戻さない内容ストリーム、秘密文字列（本文・メタデータ・しおり・注釈・添付・XMP）を含む。フォントは標準 Helvetica（埋め込みなし、ASCII のみ）。
+- PoC の検証項目（`REFERENCE_CODE.md` の `Program.cs`）を xUnit テストに移す。必須: 座標変換（全回転）、焼込、確定出力の検証全項目、秘密文字列のバイト検索 0 件、検証が改ざんを不合格にすること、確認用PDFの往復（ハッシュ一致・箇所一致・3回再保存でサイズ不変）、画像方式の往復、JSON 往復、Undo/Redo、自動グループ化、300 ページでのメモリ。
+- 手動確認（リリース前）は §17。
+
+## 16. 残存リスク
+
+1. PDFium の描画が Acrobat と異なる文書がある（非埋め込みフォントの代替など）。出力は本アプリの表示と一致する。
+2. 悪意あるPDFを PDFium がサンドボックスなしで解析する。バージョン固定と更新手順で対処する。
+3. OS 由来の残存（§13）は消せない。
+4. 確認用PDFには原本が丸ごと入っている。誤交付は透かしとファイル名で抑止するのみ。
+5. 黒塗りの形状から文字数などが推測され得る。
+6. 確定出力は画像のみで、検索もアクセシビリティもない。
+7. 確認用PDFのサイズは原本の約2倍になる。
+8. 文字の多いページは 200dpi で数百 KB〜1MB になり得る。多ページ文書では出力が大きくなる（§17 の計測で既定値を見直す）。
+
+## 17. 未検証事項（実装中・リリース前に確認する）
+
+| 項目 | 確認方法 |
+|---|---|
+| 確認用PDFと確定出力を Adobe Acrobat Reader・Edge で開く | 目視。半透明・透かし・添付の見え方、エラーが出ないこと |
+| 実文書でのサイズ・速度 | スキャン文書とテキスト文書の実物で確定出力し、ページあたりのサイズと時間を記録。必要なら既定 dpi・品質を見直す。4bit グレー化はサイズ削減の候補だが効果は未計測 |
+| xref ストリーム形式・暗号化（権限制限）・壊れた PDF のページ取込 | 実物で確認用保存。失敗時に §9.4 へ切り替わること |
+| 実プリンタでの印刷、「確認用を印刷」モード | 両モードを印刷。スプールサイズと所要時間も見る |
+| `UseWPF` での App ビルド、Ribbon の XAML | M5 で確認 |
+| `IFileDialog` の相互運用 | M5 で確認 |
+| 低スペック機・125%/150% 表示での操作感 | 実機で確認 |
+| `PdfiumWorker`（専用スレッド）経由での全機能 | PoC は単一スレッドで直接呼び出している |
