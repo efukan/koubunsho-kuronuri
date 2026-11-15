@@ -35,6 +35,7 @@
 - 実行ファイルにはコード署名をしていません。初回起動時に Windows の SmartScreen が警告を出すことがあります。ZIP のプロパティで「許可する」にチェックしてから展開すると出にくくなります。
 - LGWAN 端末への持ち込みは、各団体の情報セキュリティのルールに従ってください。
 - 理由の候補・既定のスタイルなどは、同じフォルダの `settings.json` で変更できます。
+- **削除（アンインストール）**: 展開したフォルダごと削除してください。本アプリはレジストリ・AppData・スタートメニューなどに何も書き込まないので、ほかに消すものはありません（設定はフォルダ内の `settings.json` だけです）。
 
 ## 使い方
 
@@ -86,6 +87,21 @@ tests/Kuronuri.Core.Tests/  xUnit テスト（テスト用 PDF はコードで�
 docs/                       設計書・利用の手引き
 tools/                      検査・配布用 ZIP・アイコンのスクリプト
 ```
+
+## プライバシー
+
+本アプリは、ほかのネットワーク上のシステムに一切の情報を送信しません（更新確認・利用状況の送信・テレメトリもありません）。文書の内容・ファイル名・パスを、ログや設定ファイルに書き込むこともありません。
+
+*This program will not transfer any information to other networked systems.*
+
+## コード署名の方針
+
+- 配布 ZIP は、公開しているこのリポジトリのソースから GitHub Actions（[release.yml](.github/workflows/release.yml)）でビルドします。
+- 現在のリリースはコード署名をしていません。オープンソース向けの無償署名（SignPath Foundation）を申請する予定です。承認された後は、本アプリの実行ファイル（`Kuronuri.exe`・`Kuronuri.Core.dll`）だけに署名し、ここに署名の提供元を記載します。同梱の `pdfium.dll` は第三者がビルドしたもので、署名の対象にしません。
+- 役割（いずれも [@efukan](https://github.com/efukan)）:
+  - 開発・コミット（Committers）・レビュー（Reviewers）: efukan
+  - 署名の承認（Approvers）: efukan
+- 各リリースの SHA-256 はリリースのページに記載します。
 
 ## 不具合・脆弱性の報告
 

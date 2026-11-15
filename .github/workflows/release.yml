@@ -1,0 +1,58 @@
+# Builds the distribution ZIP from a version tag (v*) on GitHub Actions, so that every released binary
+# is built from the public source (needed for code signing by SignPath Foundation).
+#   1. tools/make-release.ps1: forbidden-API check, build, all tests, pinned pdfium.dll check, ZIP
+#   2. the tag must match the version in Directory.Build.props (v0.9.1 <-> 0.9.1)
+#   3. the ZIP is kept as a workflow artifact and attached to a draft release (published by hand)
+# When code signing is approved, the SignPath signing step goes between 1 and 3
+# (only Kuronuri.exe and Kuronuri.Core.dll are signed; pdfium.dll is a third-party binary and is not).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build the distribution ZIP
+        shell: pwsh
+        run: ./tools/make-release.ps1
+
+      - name: Check that the tag matches the version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Get-Item src/Kuronuri.App/bin/Release/Kuronuri.exe).VersionInfo.ProductVersion.Split('+')[0]
+          if ("v$v" -ne $env:GITHUB_REF_NAME) { throw "tag $env:GITHUB_REF_NAME does not match version $v" }
+          $zip = "dist/kuronuri-$v.zip"
+          if (-not (Test-Path $zip)) { throw "missing $zip" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+          "sha256=$((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kuronuri-${{ steps.ver.outputs.version }}
+          path: ${{ steps.ver.outputs.zip }}
+          if-no-files-found: error
+
+      - name: Create a draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = "SHA-256: ``${{ steps.ver.outputs.sha256 }}``" + "`n`n" + "（ビルド: GitHub Actions ${{ github.run_id }}）"
+          $a = @("release", "create", $env:GITHUB_REF_NAME, "${{ steps.ver.outputs.zip }}", "--draft", "--title", $env:GITHUB_REF_NAME, "--notes", $notes)
+          if ("${{ steps.ver.outputs.version }}".StartsWith("0.")) { $a += "--prerelease" }   # 0.x is a preview
+          gh @a
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }

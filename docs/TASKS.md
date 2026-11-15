@@ -149,5 +149,14 @@
 - [x] アプリのアイコン（`tools/make-icon.ps1` で生成。16〜256px）。
 - [x] `README.md`（架空のサンプル文書での画面例 `docs/images/screenshot.png`）、`SECURITY.md`（GitHub の非公開の脆弱性報告）、GitHub Actions の CI（禁止事項の検査・ビルド・テスト）。
 - [x] 配布 ZIP を作って別フォルダに展開し、起動・黒塗り・開示用PDFの作成（検証済み）まで動作することを確認。
-- [ ] GitHub に公開リポジトリを作成し、main を push、v0.9.0 のリリースに ZIP と SHA-256 を載せる。
+- [x] GitHub に公開リポジトリ（efukan/koubunsho-kuronuri）を作成し、main を push、v0.9.0 のプレリリースに ZIP と SHA-256 を載せる。CI は GitHub 上で合格（SDK 8）。
 - [ ] §17 の未確認事項（実文書・実機・Acrobat）を確認して 1.0.0 にする。
+
+## M17 コード署名（SignPath Foundation）
+
+- [x] タグ（`v*`）で配布 ZIP を GitHub Actions でビルドし、下書きリリースに載せる（`.github/workflows/release.yml`。タグと版の一致を確認）。
+- [x] README に「コード署名の方針」（ビルド元・署名対象・役割）、プライバシー、削除の方法を記載。
+- [ ] GitHub と SignPath の二要素認証を有効にする（利用者が行う）。
+- [ ] v0.9.1 のタグを push し、GitHub Actions でビルドしたリリースを公開する。
+- [ ] SignPath Foundation に申請する（https://signpath.org/apply.html）。
+- [ ] 承認後: release.yml に SignPath の署名ステップを追加（`Kuronuri.exe`・`Kuronuri.Core.dll` のみ）。README の方針に「Free code signing provided by SignPath.io, certificate by SignPath Foundation」を記載。
