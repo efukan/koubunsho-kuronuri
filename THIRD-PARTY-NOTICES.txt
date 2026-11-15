@@ -1,0 +1,70 @@
+公文書くろぬり (kuronuri) - THIRD-PARTY NOTICES
+================================================
+
+本ソフトウェアは次の第三者ソフトウェアを同梱しています。
+
+--------------------------------------------------------------------------
+1. PDFium (pdfium.dll)
+--------------------------------------------------------------------------
+Binary: bblanchon/pdfium-binaries, NuGet package bblanchon.PDFium.Win32 159.0.8152
+        (pdfium.dll, 7,830,016 bytes,
+         SHA-256 ba884cc5c6f2c3cd7c2ecca9dce36c2e341f78eb586abd691a2bbc017aa9871e)
+Source: https://pdfium.googlesource.com/pdfium/
+License: BSD 3-Clause License (portions under the Apache License 2.0)
+
+Copyright 2014 The PDFium Authors
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google Inc. nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+--------------------------------------------------------------------------
+2. Libraries statically linked into pdfium.dll
+--------------------------------------------------------------------------
+pdfium.dll には PDFium の third_party に含まれる次のライブラリが静的に
+リンクされています。各ライブラリの著作権表示とライセンス全文は、
+pdfium-binaries の同じ版のリリースアーカイブ（LICENSE ファイル群）に
+収録されています。
+
+  - FreeType            The FreeType Project License (FTL)
+  - libjpeg-turbo       IJG License / BSD 3-Clause / zlib License
+  - OpenJPEG            BSD 2-Clause License
+  - Little CMS (lcms2)  MIT License
+  - libpng              PNG Reference Library License
+  - libtiff             libtiff License (BSD-like)
+  - zlib                zlib License
+  - Anti-Grain Geometry (AGG) 2.3   AGG License (modified BSD)
+  - Abseil              Apache License 2.0
+  - fast_float          Apache License 2.0 / MIT License
+
+注: 配布用 ZIP を作る前に、上記一覧と各ライセンス全文を pdfium-binaries
+    chromium/8152 リリースの LICENSE ファイル群と照合し、全文をこのファイル
+    の末尾に追記すること（docs/TASKS.md M10）。
+
+--------------------------------------------------------------------------
+3. .NET Framework
+--------------------------------------------------------------------------
+本ソフトウェアは Windows に同梱の .NET Framework 4.8 を利用します。
+.NET Framework 自体は同梱していません。

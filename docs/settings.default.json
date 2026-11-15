@@ -1,0 +1,17 @@
+{
+  "app": "kuronuri",
+  "schema": 1,
+  "reasons": [
+    { "code": "1号", "label": "個人情報" },
+    { "code": "2号", "label": "法人等情報" },
+    { "code": "3号", "label": "公共安全情報" },
+    { "code": "4号", "label": "審議・検討情報" },
+    { "code": "5号", "label": "事務事業情報" },
+    { "code": "6号", "label": "法令秘情報" }
+  ],
+  "exportDpi": 200,
+  "jpegQuality": 85,
+  "defaultStyle": "black",
+  "brushWidthsMm": [2, 4, 6, 10],
+  "printDpi": 300
+}

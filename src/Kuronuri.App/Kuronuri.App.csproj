@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWPF>true</UseWPF>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <RootNamespace>Kuronuri.App</RootNamespace>
+    <AssemblyName>Kuronuri</AssemblyName>
+    <Version>1.0.0</Version>
+    <Product>公文書くろぬり</Product>
+    <Deterministic>true</Deterministic>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Kuronuri.Core\Kuronuri.Core.csproj" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.Windows.Controls.Ribbon" />
+    <Reference Include="ReachFramework" />
+    <Reference Include="System.Printing" />
+  </ItemGroup>
+</Project>

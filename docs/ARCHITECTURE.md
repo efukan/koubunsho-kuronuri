@@ -40,7 +40,8 @@ Kuronuri.App (WPF, net48)
 | `Export` | `MiniPdfWriter`、`FinalExporter`、`JpegCodec`、`LosslessCodec`、`OutputVerifier` | `MiniPdfWriter.cs` `FinalExporter.cs` `OutputVerifier.cs` |
 | `Hybrid` | `HybridWriter`、`HybridReader`、`TextOutline`、`HybridRasterWriter` | `Hybrid.cs` |
 | `Printing` | `RedactedPaginator` | `PrintPaginator.cs` |
-| `Rendering` | `PageRenderService`、`BitmapCache` | （新規実装。描画は `PageRenderer` を使う） |
+| `Rendering` | `PageRenderService`、`PageBitmapCache`、`PageRenderer`、`NativeBuffer`、`Raster` | `FinalExporter.cs`（`PageRenderer` 等）。サービスとキャッシュは新規実装 |
+| `Settings` | `AppSettings`、`SettingsStore`（§12） | （新規実装） |
 
 ### 1.1 プロジェクト設定（実証済み）
 
@@ -109,7 +110,7 @@ Kuronuri.App (WPF, net48)
 
 - **ロード**: EXE のフォルダの `pdfium.dll` を絶対パスで `LoadLibraryEx(path, 0, LOAD_WITH_ALTERED_SEARCH_PATH)` してから `FPDF_InitLibrary()` を呼ぶ。以後の `DllImport("pdfium")` はロード済みのモジュールに解決される。
 - **呼び出し規約**: x64 のみなので関数側の指定は不要。コールバックのデリゲートには `[UnmanagedFunctionPointer(CallingConvention.Cdecl)]` を付け、文書を閉じるまでフィールドで保持する。
-- **専用スレッド**: PDFium はスレッドセーフではない。`PdfiumWorker` が1本のスレッドとジョブキューを持ち、全 P/Invoke をそこで実行する。API は `Task<T> Run<T>(Func<T>)`。古い描画要求は `CancellationToken` で捨てる（新規実装）。
+- **専用スレッド**: PDFium はスレッドセーフではない。`PdfiumWorker` が1本の STA スレッドとジョブキューを持ち、全 P/Invoke をそこで実行する。API は `Task<T> Run<T>(Func<T>, CancellationToken)`。開始前に取り消された要求は実行しない（古い描画要求を捨てる）。ジョブの中から呼ばれた `Run` はその場で実行する（入れ子で待つとデッドロックするため）。
 - **原本の読み込み**: `PdfDoc.FromStream`。読取専用・`FileShare.Read` の `FileStream` を `FPDF_LoadCustomDocument` のコールバックで読む。`FPDF_FILEACCESS` 構造体はアンマネージドメモリに置き、文書を閉じるまで保持する。
 - **メモリからの読み込み**: `PdfDoc.FromBytes`。`byte[]` をピン留めして `FPDF_LoadMemDocument64` に渡す。確認用PDFから取り出した原本に使う。
 - **描画**: `PageRenderer.RenderFull`。外部バッファ（BGRx、ストライド = 幅×4）を `FPDFBitmap_CreateEx` に渡し、白で塗ってから `FPDF_RenderPageBitmap` を呼ぶ。
@@ -169,7 +170,7 @@ public sealed record RedactionProject(OriginalInfo Original, IReadOnlyList<PageI
 - フリーハンドツールを使い続けている間、「編集中の箇所」を1つ持つ。
 - 新しいストロークの外接矩形を 6pt 広げたものが、編集中の箇所の Bounds と交差し、同じページなら、その箇所に追加する。そうでなければ新しい箇所を作って編集中にする。
 - ツール切替・選択変更・ページ移動・Enter/Esc で編集中の箇所を閉じる。時間による判定はしない。
-- 手動操作: 「結合」（複数箇所 → 1箇所。理由は表示順で先頭のものを引き継ぐ）、「分割」（1箇所 → 図形ごとの箇所）。同一ページ内のみ。
+- 手動操作: 「結合」（複数箇所 → 1箇所。表示順で先頭の箇所の Id を残し、理由は表示順で最初に理由が設定されている箇所のものを引き継ぐ。全て未設定なら未設定）、「分割」（1箇所 → 図形ごとの箇所。先頭の図形が元の Id を残し、全て同じ理由を持つ）。同一ページ内のみ。
 
 ### 4.3 ストローク
 
@@ -191,7 +192,7 @@ public sealed record RedactionProject(OriginalInfo Original, IReadOnlyList<PageI
 - **左右で同じビットマップを共有**: 右ペインは同じ原本ビットマップの上に黒塗りを WPF の図形で重ねる。覗き見は重ね描きの不透明度を 0.25 にするだけ。
 - **描画解像度**: 画面のデバイスピクセルに合わせて描く（ズーム × DPI スケール）。拡大縮小の補間に頼らない。
 - **大きなビットマップ**: ページ全体が 16MP を超えるズームでは、表示領域 + 余白だけを描画する（`FPDF_RenderPageBitmap` の `start_x` / `start_y` を負にして部分描画）。スクロール停止後に再描画する。
-- **キャッシュ**: `BitmapCache` はバイト数予算つき LRU。予算は「空き物理メモリの 25%、上限 512MB、下限 96MB」。現在ページと前後1ページを保持対象にする。
+- **キャッシュ**: `PageBitmapCache` はバイト数予算つき LRU。予算は「空き物理メモリの 25%、上限 512MB、下限 96MB」。1枚は「ピクセルのバイト数 × 2」で数える（WIC のビットマップと WPF の描画用コピーの分。実測、§17）。現在ページと前後1ページを保持対象にする。追い出したビットマップの合計が 32MB に達するたびに `GC.Collect()` を呼ぶ（WIC のビットマップは GC でしか解放されないため）。前後ページの先読みは、ページ移動が止まった時だけ行い、通り過ぎたページの要求は取り消す。
 - **サムネイル**: 幅 120px。`VirtualizingStackPanel` で仮想化し、表示された時に描画する。LRU で 200 枚まで。
 - **バッファ**: `NativeBuffer`（`Marshal.AllocHGlobal`、解放前にゼロクリア）。確定出力・印刷では1ページ分を使い回す。
 - **WIC ビットマップの解放**: `BitmapSource.Create` が作るコピーは GC でしか解放されない。連続処理では 8 ページごとに `GC.Collect(); GC.WaitForPendingFinalizers();` を呼ぶ（実証済み: 300 ページでピーク約 150MB で平坦。呼ばないと 600MB 超まで膨らむことがある）。
@@ -332,7 +333,7 @@ xref / trailer << /Size 3N+3 /Root 1 0 R >> / startxref / %%EOF
 - **表示**: 2画面 / 1画面 ｜ ズーム（拡大・縮小・100%・幅に合わせる・全体） ｜ ページ一覧・箇所リストの表示切替
 - 1画面モードでは右ペインだけを表示する。
 - 左ペインは編集できない。右ペインと同じページ・ズーム・スクロール位置を常に表示する。
-- ウィンドウは `RibbonWindow`（標準 Ribbon のアセンブリが解決できることは確認済み）。
+- ウィンドウは通常の `Window` に標準 `Ribbon` を置く（M5 で確認: `RibbonWindow` は Windows 11 でタイトル領域とリボン上段が欠けて表示されるため不採用）。
 
 ### 11.2 ツール
 
@@ -425,13 +426,16 @@ xref / trailer << /Size 3N+3 /Root 1 0 R >> / startxref / %%EOF
 
 ## 17. 未検証事項（実装中・リリース前に確認する）
 
-| 項目 | 確認方法 |
-|---|---|
-| 確認用PDFと確定出力を Adobe Acrobat Reader・Edge で開く | 目視。半透明・透かし・添付の見え方、エラーが出ないこと |
-| 実文書でのサイズ・速度 | スキャン文書とテキスト文書の実物で確定出力し、ページあたりのサイズと時間を記録。必要なら既定 dpi・品質を見直す。4bit グレー化はサイズ削減の候補だが効果は未計測 |
-| xref ストリーム形式・暗号化（権限制限）・壊れた PDF のページ取込 | 実物で確認用保存。失敗時に §9.4 へ切り替わること |
-| 実プリンタでの印刷、「確認用を印刷」モード | 両モードを印刷。スプールサイズと所要時間も見る |
-| `UseWPF` での App ビルド、Ribbon の XAML | M5 で確認 |
-| `IFileDialog` の相互運用 | M5 で確認 |
-| 低スペック機・125%/150% 表示での操作感 | 実機で確認 |
-| `PdfiumWorker`（専用スレッド）経由での全機能 | PoC は単一スレッドで直接呼び出している |
+「結果」欄は実装時（2026-11-15、開発機・合成データ）に確認した内容。**未確認**の行はリリース前に実物・実機で確認する。
+
+| 項目 | 確認方法 | 結果 |
+|---|---|---|
+| 確認用PDFと確定出力を Adobe Acrobat Reader・Edge で開く | 目視。半透明・透かし・添付の見え方、エラーが出ないこと | **未確認**（開発機に Acrobat なし）。本アプリ（PDFium）での再オープンと検証は全テストで合格 |
+| 実文書でのサイズ・速度 | スキャン文書とテキスト文書の実物で確定出力し、ページあたりのサイズと時間を記録。必要なら既定 dpi・品質を見直す。4bit グレー化はサイズ削減の候補だが効果は未計測 | **未確認**（実文書なし）。合成データでは §7.3 のとおり。既定値（200dpi・品質85・自動選択）は据え置き |
+| xref ストリーム形式・暗号化（権限制限）・壊れた PDF のページ取込 | 実物で確認用保存。失敗時に §9.4 へ切り替わること | 権限制限のみ（RC4 40bit・空のユーザーパスワード）の合成PDFは開け、確定出力・確認用保存（ベクター方式）・往復とも合格（`EdgeCaseTests`）。パスワード必須は `PasswordRequired` で拒否。§9.4 への自動切替と予備方式の往復はテスト済み（`forceRaster`）。**xref ストリーム形式と壊れた実物PDFは未確認** |
+| 実プリンタでの印刷、「確認用を印刷」モード | 両モードを印刷。スプールサイズと所要時間も見る | 両モードの `DocumentPaginator` を XPS に書き出すテストは合格。ジョブ名は固定 `Kuronuri`。**実プリンタ・Microsoft Print to PDF は未確認** |
+| `UseWPF` での App ビルド、Ribbon の XAML | M5 で確認 | 確認済み。`UseWPF` でビルド可、標準 Ribbon の XAML も動作。ただし `RibbonWindow` は Windows 11 でタイトル領域とリボン上段が欠けるため、通常の `Window` に `Ribbon` を置く（§11.1） |
+| `IFileDialog` の相互運用 | M5 で確認 | 確認済み。開く・保存とも `FOS_DONTADDTORECENT` 付きの `IFileDialog`（COM）で動作（`Interop/FileDialogs.cs`） |
+| 低スペック機・125%/150% 表示での操作感 | 実機で確認 | **未確認**。開発機（175% 表示）で Per-Monitor DPI のマニフェストにより文字・ページとも鮮明に表示されることは確認 |
+| `PdfiumWorker`（専用スレッド）経由での全機能 | PoC は単一スレッドで直接呼び出している | 確認済み。テストは全て `PdfiumWorker` 経由で実行して合格。ワーカーは STA スレッド（PoC と同条件。WIC・`FormattedText` もこのスレッドで動く）。印刷の `GetPage` は UI スレッドからワーカーへ同期で依頼する |
+| 画面表示のメモリ（M5 で追加） | 多ページの文書をページ送り・ズーム | 300 ページで 900 回のページ送りでも作業セットは約 780〜850MB で平坦。キャッシュは1枚を「ピクセルのバイト数 × 2」で数える（WIC のビットマップと WPF の描画用コピー。実測で増加量がほぼ2倍だったため）。追い出したビットマップが 32MB に達するたびに GC を呼ぶ（§6） |

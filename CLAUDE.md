@@ -40,6 +40,8 @@ docs/                     設計書
 ```
 dotnet build Kuronuri.sln -c Release
 dotnet test Kuronuri.sln -c Release
+pwsh tools/check-forbidden.ps1      # 禁止事項（Temp・レジストリ・通信・ログ・依存追加）の検査
+pwsh tools/make-release.ps1         # 検査・ビルド・テストの後に dist/kuronuri-<版>.zip を作る
 ```
 
 ## net48 でのコーディング注意

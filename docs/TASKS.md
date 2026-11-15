@@ -6,84 +6,91 @@
 
 ## M0 雛形
 
-- [ ] `Kuronuri.sln` と3プロジェクト（`src/Kuronuri.Core`、`src/Kuronuri.App`、`tests/Kuronuri.Core.Tests`）を作る。全て `net48` / x64 / `LangVersion` 12.0 / `Nullable` 有効 / `ImplicitUsings` 無効。Core は `AllowUnsafeBlocks`。
-- [ ] `IsExternalInit` のポリフィルを Core に置く。
-- [ ] csproj は ARCHITECTURE §1.1 の設定を使う。`bblanchon.PDFium.Win32` 159.0.8152 を参照し、`pdfium.dll` が出力フォルダに入ることと SHA-256 が §1.1 の値と一致することを確認。
-- [ ] `TestPdfFactory.cs`（参照コード）をテストプロジェクトに置く。
-- [ ] `.editorconfig`、`LICENSE`（MIT）、`THIRD-PARTY-NOTICES.txt`（PDFium と同梱ライブラリ）を置く。
+- [x] `Kuronuri.sln` と3プロジェクト（`src/Kuronuri.Core`、`src/Kuronuri.App`、`tests/Kuronuri.Core.Tests`）を作る。全て `net48` / x64 / `LangVersion` 12.0 / `Nullable` 有効 / `ImplicitUsings` 無効。Core は `AllowUnsafeBlocks`。
+- [x] `IsExternalInit` のポリフィルを Core に置く。
+- [x] csproj は ARCHITECTURE §1.1 の設定を使う。`bblanchon.PDFium.Win32` 159.0.8152 を参照し、`pdfium.dll` が出力フォルダに入ることと SHA-256 が §1.1 の値と一致することを確認。
+- [x] `TestPdfFactory.cs`（参照コード）をテストプロジェクトに置く。
+- [x] `.editorconfig`、`LICENSE`（MIT）、`THIRD-PARTY-NOTICES.txt`（PDFium と同梱ライブラリ）を置く。
 - 完了条件: `dotnet build` と空の `dotnet test` が通る。
 
 ## M1 PDFium 層（§3、付録）
 
-- [ ] `PdfiumNative` / `PdfiumLibrary` / `PdfDoc`: 参照コード `PdfiumNative.cs` を移す。
-- [ ] `PdfiumWorker`（新規）: 専用スレッドとジョブキュー、`Task<T> Run<T>`、キャンセル。以後、PDFium を呼ぶコードは全てここを通す。
-- [ ] `PageGeometry` / `PageRenderer` / `NativeBuffer` / `Raster`: 参照コード `Geometry.cs` `FinalExporter.cs` から移す。`PageRenderer` に部分描画（表示領域だけ）を追加する。
-- [ ] エラー種別（パスワード必須など）を表す例外を追加する。
+- [x] `PdfiumNative` / `PdfiumLibrary` / `PdfDoc`: 参照コード `PdfiumNative.cs` を移す。
+- [x] `PdfiumWorker`（新規）: 専用スレッドとジョブキュー、`Task<T> Run<T>`、キャンセル。以後、PDFium を呼ぶコードは全てここを通す。
+- [x] `PageGeometry` / `PageRenderer` / `NativeBuffer` / `Raster`: 参照コード `Geometry.cs` `FinalExporter.cs` から移す。`PageRenderer` に部分描画（表示領域だけ）を追加する。
+- [x] エラー種別（パスワード必須など）を表す例外を追加する。
 - 完了条件: テスト用PDF（全回転・サイズ混在）を開き、寸法とマーカーのピクセル位置がテストで一致する。
 
 ## M2 モデル・Undo・JSON（§4、§5）
 
-- [ ] `Model` の record 群、`ShapeMath`、`ProjectJson`: 参照コード `Model.cs` を移す。
-- [ ] `UndoStack` と3コマンド + `Composite`。履歴上限、変更ありの判定。
-- [ ] 自動グループ化、結合、分割。
-- [ ] ストロークの間引き（RDP）と太さ補正。
+- [x] `Model` の record 群、`ShapeMath`、`ProjectJson`: 参照コード `Model.cs` を移す。
+- [x] `UndoStack` と3コマンド + `Composite`。履歴上限、変更ありの判定。
+- [x] 自動グループ化、結合、分割。
+- [x] ストロークの間引き（RDP）と太さ補正。
 - 完了条件: JSON 往復、Undo/Redo、グループ化のテストが通る。
 
 ## M3 確定出力と検証（§2、§7、§8）
 
-- [ ] `CoordMap` / `Burner`: 参照コード `Geometry.cs` を移す。
-- [ ] `MiniPdfWriter` / `JpegCodec` / `LosslessCodec` / `FinalExporter`: 参照コードを移す。追加するもの: キャンセル、`.part` → 改名、保存先の拒否判定（§7.2）、dpi を自動で下げたページの通知。
-- [ ] `OutputVerifier`: 参照コードを移す。構造検証を、ファイル全体を読まずシークで読む形に直す（§8）。
+- [x] `CoordMap` / `Burner`: 参照コード `Geometry.cs` を移す。
+- [x] `MiniPdfWriter` / `JpegCodec` / `LosslessCodec` / `FinalExporter`: 参照コードを移す。追加するもの: キャンセル、`.part` → 改名、保存先の拒否判定（§7.2）、dpi を自動で下げたページの通知。
+- [x] `OutputVerifier`: 参照コードを移す。構造検証を、ファイル全体を読まずシークで読む形に直す（§8）。
 - 完了条件: テスト用PDFの確定出力で検証全項目が通り、秘密文字列のバイト検索が 0 件。300 ページでメモリ使用量が増え続けない。
 
 ## M4 確認用PDF（§9）
 
-- [ ] `TextOutline` / `HybridWriter` / `HybridReader`: 参照コード `Hybrid.cs` を移す（透かしは共有 XObject 方式が既定）。
-- [ ] `HybridRasterWriter`（予備方式）: 参照コードを移し、ラベルと透かしの描画を追加する（§9.4）。
-- [ ] 保存の流れ: ベクター方式で保存 → 読み戻し検証（ハッシュ・ページ数・JSON）→ 失敗なら予備方式へ自動切替。上書き時の `.part` → 置き換え。
-- [ ] 読み込みの流れ: 判定、原本抽出、ハッシュ照合、箇所復元（§9.2）。
+- [x] `TextOutline` / `HybridWriter` / `HybridReader`: 参照コード `Hybrid.cs` を移す（透かしは共有 XObject 方式が既定）。
+- [x] `HybridRasterWriter`（予備方式）: 参照コードを移し、ラベルと透かしの描画を追加する（§9.4）。
+- [x] 保存の流れ: ベクター方式で保存 → 読み戻し検証（ハッシュ・ページ数・JSON）→ 失敗なら予備方式へ自動切替。上書き時の `.part` → 置き換え。
+- [x] 読み込みの流れ: 判定、原本抽出、ハッシュ照合、箇所復元（§9.2）。
 - 完了条件: 往復でハッシュ一致・箇所一致。3回再保存してもサイズが変わらない。全回転で赤領域の位置が一致。予備方式でも往復できる。
 
 ## M5 アプリの骨格（§6、§11.1）
 
-- [ ] `RibbonWindow`、ページ一覧、左右ペイン、箇所リスト、ステータスバーの配置。
-- [ ] `ViewState` の共有による左右同期。ページ移動、ズーム、スクロール、2画面/1画面切替。
-- [ ] `PageRenderService` と `BitmapCache`（LRU、予算、部分描画）。サムネイルの仮想化。
-- [ ] 開く処理（原本 / 確認用PDFの判定）。ファイルダイアログは「最近使ったファイル」に登録しない。
-- [ ] Per-Monitor DPI 対応のマニフェスト。
+- [x] リボン（`RibbonWindow` は Windows 11 で表示が崩れるため通常の `Window` + `Ribbon`。§11.1）、ページ一覧、左右ペイン、箇所リスト、ステータスバーの配置。
+- [x] `ViewState` の共有による左右同期。ページ移動、ズーム、スクロール、2画面/1画面切替。
+- [x] `PageRenderService` と `PageBitmapCache`（LRU、予算、部分描画）。サムネイルの仮想化。
+- [x] 開く処理（原本 / 確認用PDFの判定）。ファイルダイアログは「最近使ったファイル」に登録しない。
+- [x] Per-Monitor DPI 対応のマニフェスト。
 - 完了条件: 500 ページのPDFを開いてページ送り・ズームしてもメモリが予算内に収まる。
+  - 結果: 300 ページのテストPDFで 100%・幅合わせ・拡大の各 300 ページ送り（計 900 回）、作業セットは約 780〜850MB で平坦（キャッシュ予算 512MB、§6）。800% は部分描画で約 545MB。500 ページは未実施（キャッシュはページ数に依存しない）。
 
 ## M6 描画ツール（§11.2、§4.2、§4.3）
 
-- [ ] 右ペイン上の重ね描き（箇所の表示、選択表示、覗き見）。
-- [ ] 選択・移動・リサイズ、矩形、フリーハンド、消しゴム。
-- [ ] 太さ変更、スタイル切替、現在の理由の引き継ぎ。
+- [x] 右ペイン上の重ね描き（箇所の表示、選択表示、覗き見）。
+- [x] 選択・移動・リサイズ、矩形、フリーハンド、消しゴム。
+- [x] 太さ変更、スタイル切替、現在の理由の引き継ぎ。
 - 完了条件: 全操作が Undo/Redo できる。回転ページでも画面と確定出力の位置が一致する。
+  - 結果: 90° 回転ページで画面上に描いた矩形と確定出力の焼込位置が一致することを目視で確認。Undo/Redo は Core のテストと画面操作で確認。
 
 ## M7 箇所リストと理由（§11.3）
 
-- [ ] 一覧表示、ジャンプとハイライト、複数選択、理由の一括変更、未設定の警告表示。
-- [ ] 結合・分割・削除。
+- [x] 一覧表示、ジャンプとハイライト、複数選択、理由の一括変更、未設定の警告表示。
+- [x] 結合・分割・削除。
 - 完了条件: リストと画面の選択が常に一致する。
 
 ## M8 保存・出力・印刷の画面（§7.2、§9.3、§10）
 
-- [ ] 確認用として保存 / 名前を付けて保存 / 確定出力のコマンドと進捗ダイアログ。原本パスへの保存拒否。
-- [ ] 確定出力後の検証結果の表示。
-- [ ] 印刷: 「黒塗り済みを印刷」は参照コード `PrintPaginator.cs` を移す。「確認用を印刷」は同じ配置ロジックで原本ビットマップ + WPF の重ね描きを新規に作る。ジョブ名は固定、確認用印刷時は警告（§10）。
-- [ ] 未保存の変更がある時の終了確認。
+- [x] 確認用として保存 / 名前を付けて保存 / 確定出力のコマンドと進捗ダイアログ。原本パスへの保存拒否。
+- [x] 確定出力後の検証結果の表示。
+- [x] 印刷: 「黒塗り済みを印刷」は参照コード `PrintPaginator.cs` を移す。「確認用を印刷」は同じ配置ロジックで原本ビットマップ + WPF の重ね描きを新規に作る。ジョブ名は固定、確認用印刷時は警告（§10）。
+- [x] 未保存の変更がある時の終了確認。
 - 完了条件: 実プリンタまたは「Microsoft Print to PDF」で両モードを印刷できる。
+  - 結果: 両モードの `DocumentPaginator` を XPS へ書き出すテストは合格（`PrintingTests`）。**実プリンタ / Microsoft Print to PDF での印刷は未確認**（§17）。
 
 ## M9 設定・ショートカット（§11.4、§12）
 
-- [ ] `settings.json` の読み書きとプリセット編集画面。
-- [ ] 全ショートカット。
+- [x] `settings.json` の読み書きとプリセット編集画面。
+- [x] 全ショートカット。
 - 完了条件: 書き込めないフォルダに置いても起動・動作する。
+  - 結果: 読み取り専用の settings.json で起動・設定変更し、「今回の起動中だけ有効」と表示されて動作継続することを確認。
 
 ## M10 仕上げ（§13〜§16）
 
-- [ ] エッジケースの警告（§14）。未処理例外の扱い。
-- [ ] コード全体に対する禁止事項の検査（Temp・レジストリ・通信・ログへの内容出力がないこと）。
-- [ ] 配布用 ZIP を作る手順と、利用の手引き（残存データの注意、確認用PDFの取り扱い）。
+- [x] エッジケースの警告（§14）。未処理例外の扱い。
+- [x] コード全体に対する禁止事項の検査（Temp・レジストリ・通信・ログへの内容出力がないこと）。
+- [x] 配布用 ZIP を作る手順と、利用の手引き（残存データの注意、確認用PDFの取り扱い）。
+- [ ] `THIRD-PARTY-NOTICES.txt` に、pdfium.dll に静的リンクされたライブラリのライセンス全文を追記する（pdfium-binaries chromium/8152 のリリースアーカイブの LICENSE と照合）。
 - [ ] 未検証事項（§17）を全て確認し、結果を §17 に記録する。実文書でのサイズ計測の結果しだいで既定 dpi・品質を見直す。
 - 完了条件: ZIP を別フォルダに展開して全機能が動く。
+  - 手順: `pwsh tools/make-release.ps1`（禁止事項検査 → ビルド → テスト → `dist/kuronuri-<版>.zip`）。禁止事項の検査だけなら `pwsh tools/check-forbidden.ps1`。
+  - 結果: ZIP を別フォルダに展開し、開く → 矩形・フリーハンド → 確認用保存 → 確定出力（検証済み）→ 設定 → Undo → 終了確認まで動作。印刷と §17 の実文書項目は未確認。

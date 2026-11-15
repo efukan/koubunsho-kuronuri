@@ -1,0 +1,222 @@
+<Window x:Class="Kuronuri.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:r="clr-namespace:System.Windows.Controls.Ribbon;assembly=System.Windows.Controls.Ribbon"
+        xmlns:local="clr-namespace:Kuronuri.App"
+        Title="公文書くろぬり" Width="1400" Height="900" MinWidth="900" MinHeight="600"
+        FontFamily="Yu Gothic UI, Meiryo, MS Gothic" FontSize="12"
+        WindowStartupLocation="CenterScreen" UseLayoutRounding="True">
+  <Window.CommandBindings>
+    <CommandBinding Command="local:Cmd.Open" Executed="Open_Executed" />
+    <CommandBinding Command="local:Cmd.SaveReview" Executed="SaveReview_Executed" CanExecute="HasDoc_CanExecute" />
+    <CommandBinding Command="local:Cmd.SaveAs" Executed="SaveAs_Executed" CanExecute="HasDoc_CanExecute" />
+    <CommandBinding Command="local:Cmd.Export" Executed="Export_Executed" CanExecute="HasDoc_CanExecute" />
+    <CommandBinding Command="local:Cmd.PrintRedacted" Executed="PrintRedacted_Executed" CanExecute="HasDoc_CanExecute" />
+    <CommandBinding Command="local:Cmd.PrintReview" Executed="PrintReview_Executed" CanExecute="HasDoc_CanExecute" />
+    <CommandBinding Command="local:Cmd.Undo" Executed="Undo_Executed" CanExecute="Undo_CanExecute" />
+    <CommandBinding Command="local:Cmd.Redo" Executed="Redo_Executed" CanExecute="Redo_CanExecute" />
+    <CommandBinding Command="local:Cmd.Merge" Executed="Merge_Executed" CanExecute="Merge_CanExecute" />
+    <CommandBinding Command="local:Cmd.Split" Executed="Split_Executed" CanExecute="Split_CanExecute" />
+    <CommandBinding Command="local:Cmd.Delete" Executed="Delete_Executed" CanExecute="HasSelection_CanExecute" />
+    <CommandBinding Command="local:Cmd.ZoomIn" Executed="ZoomIn_Executed" CanExecute="HasDoc_CanExecute" />
+    <CommandBinding Command="local:Cmd.ZoomOut" Executed="ZoomOut_Executed" CanExecute="HasDoc_CanExecute" />
+    <CommandBinding Command="local:Cmd.Zoom100" Executed="Zoom100_Executed" CanExecute="HasDoc_CanExecute" />
+    <CommandBinding Command="local:Cmd.FitWidth" Executed="FitWidth_Executed" CanExecute="HasDoc_CanExecute" />
+    <CommandBinding Command="local:Cmd.FitPage" Executed="FitPage_Executed" CanExecute="HasDoc_CanExecute" />
+    <CommandBinding Command="local:Cmd.TogglePanes" Executed="TogglePanes_Executed" />
+    <CommandBinding Command="local:Cmd.Settings" Executed="Settings_Executed" />
+  </Window.CommandBindings>
+  <Window.InputBindings>
+    <KeyBinding Command="local:Cmd.Open" Gesture="Ctrl+O" />
+    <KeyBinding Command="local:Cmd.SaveReview" Gesture="Ctrl+S" />
+    <KeyBinding Command="local:Cmd.SaveAs" Gesture="Ctrl+Shift+S" />
+    <KeyBinding Command="local:Cmd.Export" Gesture="Ctrl+E" />
+    <KeyBinding Command="local:Cmd.PrintRedacted" Gesture="Ctrl+P" />
+    <KeyBinding Command="local:Cmd.Undo" Gesture="Ctrl+Z" />
+    <KeyBinding Command="local:Cmd.Redo" Gesture="Ctrl+Y" />
+    <KeyBinding Command="local:Cmd.Merge" Gesture="Ctrl+G" />
+    <KeyBinding Command="local:Cmd.Split" Gesture="Ctrl+Shift+G" />
+    <KeyBinding Command="local:Cmd.Zoom100" Gesture="Ctrl+D1" />
+    <KeyBinding Command="local:Cmd.FitWidth" Gesture="Ctrl+D2" />
+    <KeyBinding Command="local:Cmd.FitPage" Gesture="Ctrl+D0" />
+    <KeyBinding Command="local:Cmd.ZoomIn" Gesture="Ctrl+OemPlus" />
+    <KeyBinding Command="local:Cmd.ZoomOut" Gesture="Ctrl+OemMinus" />
+    <KeyBinding Command="local:Cmd.ZoomIn" Gesture="Ctrl+Add" />
+    <KeyBinding Command="local:Cmd.ZoomOut" Gesture="Ctrl+Subtract" />
+    <KeyBinding Command="local:Cmd.Zoom100" Gesture="Ctrl+NumPad1" />
+    <KeyBinding Command="local:Cmd.FitWidth" Gesture="Ctrl+NumPad2" />
+    <KeyBinding Command="local:Cmd.FitPage" Gesture="Ctrl+NumPad0" />
+    <KeyBinding Command="local:Cmd.TogglePanes" Gesture="F6" />
+  </Window.InputBindings>
+
+  <DockPanel>
+    <r:Ribbon DockPanel.Dock="Top" x:Name="ribbon" Margin="0,-22,0,0" ShowQuickAccessToolBarOnTop="False">
+      <r:Ribbon.ApplicationMenu>
+        <r:RibbonApplicationMenu Visibility="Collapsed" />
+      </r:Ribbon.ApplicationMenu>
+      <r:RibbonTab Header="ホーム">
+        <r:RibbonGroup Header="ファイル">
+          <r:RibbonButton Label="開く" LargeImageSource="{local:Glyph E8E5}" Command="local:Cmd.Open" ToolTipTitle="開く (Ctrl+O)" />
+          <r:RibbonButton Label="確認用として保存" LargeImageSource="{local:Glyph E74E}" Command="local:Cmd.SaveReview" ToolTipTitle="確認用として保存 (Ctrl+S)" ToolTipDescription="原本を埋め込んだ庁内確認用PDFを保存します。" />
+          <r:RibbonButton Label="名前を付けて保存" SmallImageSource="{local:Glyph E792}" Command="local:Cmd.SaveAs" ToolTipTitle="名前を付けて保存 (Ctrl+Shift+S)" />
+          <r:RibbonButton Label="確定出力" LargeImageSource="{local:Glyph E896}" Command="local:Cmd.Export" ToolTipTitle="確定出力 (Ctrl+E)" ToolTipDescription="全ページを画像化して黒塗りを焼き込んだ開示用PDFを書き出します。" />
+          <r:RibbonMenuButton Label="印刷" LargeImageSource="{local:Glyph E749}">
+            <r:RibbonMenuItem Header="黒塗り済みを印刷 (Ctrl+P)" Command="local:Cmd.PrintRedacted" />
+            <r:RibbonMenuItem Header="確認用を印刷（原本の内容が見えます）" Command="local:Cmd.PrintReview" />
+          </r:RibbonMenuButton>
+        </r:RibbonGroup>
+        <r:RibbonGroup Header="編集">
+          <r:RibbonButton Label="元に戻す" SmallImageSource="{local:Glyph E7A7}" Command="local:Cmd.Undo" ToolTipTitle="元に戻す (Ctrl+Z)" />
+          <r:RibbonButton Label="やり直し" SmallImageSource="{local:Glyph E7A6}" Command="local:Cmd.Redo" ToolTipTitle="やり直し (Ctrl+Y)" />
+        </r:RibbonGroup>
+        <r:RibbonGroup Header="ツール">
+          <r:RibbonRadioButton x:Name="toolSelect" Label="選択" LargeImageSource="{local:Glyph E8B0}" GroupName="tool" IsChecked="True" Checked="Tool_Checked" Tag="Select" ToolTipTitle="選択 (V)" />
+          <r:RibbonRadioButton x:Name="toolRect" Label="矩形" LargeImageSource="{local:Glyph E71A}" GroupName="tool" Checked="Tool_Checked" Tag="Rect" ToolTipTitle="矩形 (R)" />
+          <r:RibbonRadioButton x:Name="toolFree" Label="フリーハンド" LargeImageSource="{local:Glyph E76D}" GroupName="tool" Checked="Tool_Checked" Tag="Freehand" ToolTipTitle="フリーハンド (B)" />
+          <r:RibbonRadioButton x:Name="toolEraser" Label="消しゴム" LargeImageSource="{local:Glyph E75C}" GroupName="tool" Checked="Tool_Checked" Tag="Eraser" ToolTipTitle="消しゴム (E)" />
+          <StackPanel Margin="6,4,2,0" VerticalAlignment="Top">
+            <TextBlock Text="太さ ( [ / ] )" Margin="0,0,0,2" />
+            <ComboBox x:Name="brushCombo" Width="80" SelectionChanged="Brush_SelectionChanged" />
+          </StackPanel>
+        </r:RibbonGroup>
+        <r:RibbonGroup Header="現在の理由">
+          <StackPanel Margin="4,4,4,0" VerticalAlignment="Top">
+            <TextBlock Text="新しい箇所に付ける理由" Margin="0,0,0,2" />
+            <ComboBox x:Name="currentReasonCombo" Width="170" SelectionChanged="CurrentReason_SelectionChanged" />
+          </StackPanel>
+        </r:RibbonGroup>
+        <r:RibbonGroup Header="箇所">
+          <r:RibbonButton Label="結合" SmallImageSource="{local:Glyph E71B}" Command="local:Cmd.Merge" ToolTipTitle="結合 (Ctrl+G)" ToolTipDescription="同じページの複数の箇所を1つにまとめます。" />
+          <r:RibbonButton Label="分割" SmallImageSource="{local:Glyph E8C6}" Command="local:Cmd.Split" ToolTipTitle="分割 (Ctrl+Shift+G)" ToolTipDescription="1つの箇所を図形ごとの箇所に分けます。" />
+          <r:RibbonButton Label="削除" SmallImageSource="{local:Glyph E74D}" Command="local:Cmd.Delete" ToolTipTitle="削除 (Delete)" />
+        </r:RibbonGroup>
+        <r:RibbonGroup Header="スタイル">
+          <r:RibbonRadioButton x:Name="styleBlack" Label="黒塗り" SmallImageSource="{local:Glyph E91F}" GroupName="style" IsChecked="True" Checked="Style_Checked" Tag="Black" />
+          <r:RibbonRadioButton x:Name="styleWhite" Label="白塗り+黒枠" SmallImageSource="{local:Glyph E739}" GroupName="style" Checked="Style_Checked" Tag="White" />
+        </r:RibbonGroup>
+        <r:RibbonGroup Header="設定">
+          <r:RibbonButton Label="設定" LargeImageSource="{local:Glyph E713}" Command="local:Cmd.Settings" />
+        </r:RibbonGroup>
+      </r:RibbonTab>
+      <r:RibbonTab Header="表示">
+        <r:RibbonGroup Header="画面">
+          <r:RibbonRadioButton x:Name="twoPane" Label="2画面" LargeImageSource="{local:Glyph E8A1}" GroupName="panes" IsChecked="True" Checked="Panes_Checked" ToolTipTitle="2画面 / 1画面 (F6)" />
+          <r:RibbonRadioButton x:Name="onePane" Label="1画面" LargeImageSource="{local:Glyph E7C3}" GroupName="panes" Checked="Panes_Checked" ToolTipTitle="2画面 / 1画面 (F6)" />
+        </r:RibbonGroup>
+        <r:RibbonGroup Header="ズーム">
+          <r:RibbonButton Label="拡大" SmallImageSource="{local:Glyph E8A3}" Command="local:Cmd.ZoomIn" />
+          <r:RibbonButton Label="縮小" SmallImageSource="{local:Glyph E71F}" Command="local:Cmd.ZoomOut" />
+          <r:RibbonButton Label="100%" SmallImageSource="{local:Glyph E71E}" Command="local:Cmd.Zoom100" ToolTipTitle="100% (Ctrl+1)" />
+          <r:RibbonButton Label="幅に合わせる" SmallImageSource="{local:Glyph E799}" Command="local:Cmd.FitWidth" ToolTipTitle="幅に合わせる (Ctrl+2)" />
+          <r:RibbonButton Label="全体" SmallImageSource="{local:Glyph E9A6}" Command="local:Cmd.FitPage" ToolTipTitle="全体 (Ctrl+0)" />
+        </r:RibbonGroup>
+        <r:RibbonGroup Header="パネル">
+          <r:RibbonCheckBox x:Name="showThumbs" Label="ページ一覧" IsChecked="True" Checked="Panels_Changed" Unchecked="Panels_Changed" />
+          <r:RibbonCheckBox x:Name="showList" Label="箇所リスト" IsChecked="True" Checked="Panels_Changed" Unchecked="Panels_Changed" />
+        </r:RibbonGroup>
+      </r:RibbonTab>
+    </r:Ribbon>
+
+    <StatusBar DockPanel.Dock="Bottom">
+      <StatusBarItem><TextBlock x:Name="stPage" Text="ページ -/-" /></StatusBarItem>
+      <Separator />
+      <StatusBarItem><TextBlock x:Name="stZoom" Text="-%" /></StatusBarItem>
+      <Separator />
+      <StatusBarItem><TextBlock x:Name="stItems" Text="箇所 0" /></StatusBarItem>
+      <Separator />
+      <StatusBarItem><TextBlock x:Name="stUnset" Text="理由未設定 0" /></StatusBarItem>
+      <Separator />
+      <StatusBarItem><TextBlock x:Name="stState" Text="ファイルが開かれていません" /></StatusBarItem>
+    </StatusBar>
+
+    <Grid x:Name="mainGrid">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition x:Name="colThumbs" Width="160" MinWidth="100" />
+        <ColumnDefinition x:Name="colSplit1" Width="4" />
+        <ColumnDefinition x:Name="colLeft" Width="*" />
+        <ColumnDefinition x:Name="colGap" Width="4" />
+        <ColumnDefinition x:Name="colRight" Width="*" />
+        <ColumnDefinition x:Name="colSplit2" Width="4" />
+        <ColumnDefinition x:Name="colList" Width="320" MinWidth="200" />
+      </Grid.ColumnDefinitions>
+
+      <ListBox x:Name="thumbList" Grid.Column="0" SelectionMode="Single" SelectionChanged="Thumb_SelectionChanged"
+               VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="#FFEDEDED" BorderThickness="0">
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+        <ListBox.ItemTemplate>
+          <DataTemplate DataType="{x:Type local:ThumbVM}">
+            <StackPanel Margin="4">
+              <Border BorderBrush="#FF9A9A9A" BorderThickness="1" Background="White" HorizontalAlignment="Center">
+                <Image Source="{Binding Image}" Width="120" Height="{Binding HeightDip}" Stretch="Fill" />
+              </Border>
+              <TextBlock Text="{Binding Label}" HorizontalAlignment="Center" Margin="0,2,0,0" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <GridSplitter x:Name="split1" Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="#FFD0D0D0" />
+
+      <Grid Grid.Column="2" x:Name="leftHost">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+        <Border Background="#FF3C3F46" Padding="6,2"><TextBlock Text="原本（閲覧のみ）" Foreground="White" /></Border>
+        <local:PageCanvas x:Name="leftCanvas" Grid.Row="1" />
+      </Grid>
+      <Border Grid.Column="3" Background="#FF2B2D31" />
+      <Grid Grid.Column="4" x:Name="rightHost">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+        <Border Background="#FF1F1F1F" Padding="6,2"><TextBlock Text="黒塗りプレビュー（編集）  Space 押下中は透過" Foreground="White" /></Border>
+        <local:PageCanvas x:Name="rightCanvas" Grid.Row="1" />
+        <TextBlock x:Name="emptyHint" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="White" FontSize="16"
+                   Text="「開く」(Ctrl+O) で PDF を開いてください" />
+      </Grid>
+      <GridSplitter x:Name="split2" Grid.Column="5" Width="4" HorizontalAlignment="Stretch" Background="#FFD0D0D0" />
+
+      <DockPanel Grid.Column="6" x:Name="listPanel">
+        <Border DockPanel.Dock="Top" Background="#FFEDEDED" Padding="6,4"><TextBlock Text="箇所リスト" FontWeight="Bold" /></Border>
+        <Border DockPanel.Dock="Bottom" Background="#FFF5F5F5" BorderBrush="#FFD0D0D0" BorderThickness="0,1,0,0" Padding="6">
+          <StackPanel>
+            <TextBlock x:Name="reasonEditTitle" Text="選択した箇所の理由" Margin="0,0,0,3" />
+            <ComboBox x:Name="reasonEditCombo" SelectionChanged="ReasonEdit_SelectionChanged" IsEnabled="False" />
+            <TextBlock Text="自由記述" Margin="0,6,0,3" />
+            <TextBox x:Name="freeTextEdit" IsEnabled="False" LostKeyboardFocus="FreeText_LostFocus" KeyDown="FreeText_KeyDown" />
+          </StackPanel>
+        </Border>
+        <ListView x:Name="itemList" SelectionMode="Extended" SelectionChanged="ItemList_SelectionChanged"
+                  PreviewMouseLeftButtonUp="ItemList_PreviewMouseLeftButtonUp" BorderThickness="0"
+                  VirtualizingPanel.IsVirtualizing="True">
+          <ListView.ItemContainerStyle>
+            <Style TargetType="ListViewItem">
+              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding IsUnset}" Value="True">
+                  <Setter Property="Background" Value="#FFFFE2C2" />
+                  <Setter Property="ToolTip" Value="理由が設定されていません" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </ListView.ItemContainerStyle>
+          <ListView.View>
+            <GridView>
+              <GridViewColumn Header="番号" Width="44" DisplayMemberBinding="{Binding Number}" />
+              <GridViewColumn Header="頁" Width="40" DisplayMemberBinding="{Binding Page}" />
+              <GridViewColumn Header="理由" Width="160" DisplayMemberBinding="{Binding ReasonText}" />
+              <GridViewColumn Header="種別" Width="64">
+                <GridViewColumn.CellTemplate>
+                  <DataTemplate>
+                    <StackPanel Orientation="Horizontal" ToolTip="{Binding Kind}">
+                      <TextBlock Text="{Binding KindGlyph}" FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Margin="0,1,4,0" />
+                      <TextBlock Text="{Binding Kind}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </GridViewColumn.CellTemplate>
+              </GridViewColumn>
+            </GridView>
+          </ListView.View>
+        </ListView>
+      </DockPanel>
+    </Grid>
+  </DockPanel>
+</Window>
