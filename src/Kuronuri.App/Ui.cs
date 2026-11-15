@@ -12,40 +12,6 @@ using Kuronuri.Core.Rendering;
 
 namespace Kuronuri.App
 {
-    /// <summary>Ribbon icon from a Segoe MDL2 Assets glyph (in-box font on Windows 10/11), drawn as a vector.</summary>
-    [MarkupExtensionReturnType(typeof(ImageSource))]
-    public sealed class GlyphExtension : MarkupExtension
-    {
-        public GlyphExtension(string code) { Code = code; }
-        public string Code { get; set; }
-        public Color Color { get; set; } = Color.FromRgb(0x33, 0x33, 0x33);
-
-        public override object ProvideValue(IServiceProvider serviceProvider) => Make(Code, Color);
-
-        public static ImageSource Make(string code, Color color)
-        {
-            const double em = 32;
-            string ch = char.ConvertFromUtf32(int.Parse(code, NumberStyles.HexNumber, CultureInfo.InvariantCulture));
-            var ft = new FormattedText(ch, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
-                new Typeface(new FontFamily("Segoe MDL2 Assets, Segoe UI Symbol"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
-                em * 0.8, Brushes.Black, 1.0);
-            var geo = ft.BuildGeometry(new Point(0, 0));
-            var b = geo.Bounds;
-            var g = new DrawingGroup();
-            g.Children.Add(new GeometryDrawing(Brushes.Transparent, null, new RectangleGeometry(new Rect(0, 0, em, em))));
-            if (!b.IsEmpty)
-            {
-                geo.Transform = new TranslateTransform((em - b.Width) / 2 - b.X, (em - b.Height) / 2 - b.Y);
-                var brush = new SolidColorBrush(color);
-                brush.Freeze();
-                g.Children.Add(new GeometryDrawing(brush, null, geo));
-            }
-            var img = new DrawingImage(g);
-            img.Freeze();
-            return img;
-        }
-    }
-
     public static class Cmd
     {
         private static RoutedUICommand C(string text, string name, params InputGesture[] g) =>

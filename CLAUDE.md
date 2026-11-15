@@ -23,7 +23,7 @@ Windows 向け PDF 黒塗り（墨消し）専用デスクトップアプリ。�
 - PDF の読込・描画・ページ取込・添付: PDFium を自前 P/Invoke で呼ぶ。パッケージは `bblanchon.PDFium.Win32` **159.0.8152** に固定（上げる時は全テストをやり直す）。
 - 確定出力: 自前の最小 PDF ライター。JPEG 化は WPF 内蔵の `JpegBitmapEncoder`（WIC）、可逆圧縮は `DeflateStream` + zlib ヘッダ。
 - JSON: 標準の `DataContractJsonSerializer`。
-- リボン: 標準の `System.Windows.Controls.Ribbon`。
+- 画面上部: 自前のコマンドバー（Windows 11 風。テーマは `src/Kuronuri.App/Themes/`、ARCHITECTURE §11.7）。標準 Ribbon は使わない。
 - 配布: EXE + `pdfium.dll` + ライセンス文書の ZIP。単一EXE化（自己展開）はしない。
 
 ## ディレクトリ

@@ -13,5 +13,6 @@
   "jpegQuality": 85,
   "defaultStyle": "black",
   "brushWidthsMm": [2, 4, 6, 10],
-  "printDpi": 300
+  "printDpi": 300,
+  "theme": "light"
 }

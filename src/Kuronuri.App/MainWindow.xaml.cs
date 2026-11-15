@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Ribbon;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -213,7 +212,7 @@ namespace Kuronuri.App
 
         private void TogglePanes_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            if (twoPane.IsChecked == true) onePane.IsChecked = true; else twoPane.IsChecked = true;
+            twoPane.IsChecked = !twoPane.IsChecked;
         }
 
         private void Panels_Changed(object sender, RoutedEventArgs e)
@@ -759,6 +758,7 @@ namespace Kuronuri.App
             var layout = _settings.Window;
             _settings = win.Result.Normalize();
             _settings.Window = layout;
+            if (_settings.Theme != Themes.ThemeManager.Current) Themes.ThemeManager.Apply(_settings.Theme);
             if (!SettingsStore.TrySave(_settingsPath, _settings))
                 Info("設定は今回の起動中だけ有効です（設定ファイルを書き込めない場所にあります）。");
             ApplySettingsToUi();
@@ -793,6 +793,7 @@ namespace Kuronuri.App
         private void UpdateStatus()
         {
             var s = _session;
+            if (styleButton != null) UpdateStyleButton();
             if (s == null)
             {
                 if (!pageBox.IsKeyboardFocusWithin) pageBox.Text = "";

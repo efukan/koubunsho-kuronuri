@@ -1,10 +1,10 @@
 <Window x:Class="Kuronuri.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:r="clr-namespace:System.Windows.Controls.Ribbon;assembly=System.Windows.Controls.Ribbon"
+        xmlns:t="clr-namespace:Kuronuri.App.Themes"
         xmlns:local="clr-namespace:Kuronuri.App"
         Title="公文書くろぬり" Width="1400" Height="900" MinWidth="900" MinHeight="600"
-        FontFamily="Yu Gothic UI, Meiryo, MS Gothic" FontSize="12"
+        FontFamily="{StaticResource UiFont}" FontSize="13" Background="{DynamicResource Bg.Window}" Foreground="{DynamicResource Text.Primary}"
         WindowStartupLocation="CenterScreen" UseLayoutRounding="True"
         AllowDrop="True" DragOver="Window_DragOver" Drop="Window_Drop">
   <Window.CommandBindings>
@@ -57,84 +57,102 @@
   </Window.InputBindings>
 
   <DockPanel>
-    <r:Ribbon DockPanel.Dock="Top" x:Name="ribbon" Margin="0,-22,0,0" ShowQuickAccessToolBarOnTop="False">
-      <r:Ribbon.ApplicationMenu>
-        <r:RibbonApplicationMenu Visibility="Collapsed" />
-      </r:Ribbon.ApplicationMenu>
-      <r:RibbonTab Header="ホーム">
-        <r:RibbonGroup Header="ファイル">
-          <r:RibbonButton Label="開く" LargeImageSource="{local:Glyph E8E5}" Command="local:Cmd.Open" ToolTipTitle="開く (Ctrl+O)" />
-          <r:RibbonButton Label="確認用として保存" LargeImageSource="{local:Glyph E74E}" Command="local:Cmd.SaveReview" ToolTipTitle="確認用として保存 (Ctrl+S)" ToolTipDescription="原本を埋め込んだ庁内確認用PDFを保存します。" />
-          <r:RibbonButton Label="名前を付けて保存" SmallImageSource="{local:Glyph E792}" Command="local:Cmd.SaveAs" ToolTipTitle="名前を付けて保存 (Ctrl+Shift+S)" />
-          <r:RibbonButton Label="確定出力" LargeImageSource="{local:Glyph E896}" Command="local:Cmd.Export" ToolTipTitle="確定出力 (Ctrl+E)" ToolTipDescription="全ページを画像化して黒塗りを焼き込んだ開示用PDFを書き出します。" />
-          <r:RibbonMenuButton Label="印刷" LargeImageSource="{local:Glyph E749}">
-            <r:RibbonMenuItem Header="黒塗り済みを印刷 (Ctrl+P)" Command="local:Cmd.PrintRedacted" />
-            <r:RibbonMenuItem Header="確認用を印刷（原本の内容が見えます）" Command="local:Cmd.PrintReview" />
-          </r:RibbonMenuButton>
-        </r:RibbonGroup>
-        <r:RibbonGroup Header="編集">
-          <r:RibbonButton Label="元に戻す" SmallImageSource="{local:Glyph E7A7}" Command="local:Cmd.Undo" ToolTipTitle="元に戻す (Ctrl+Z)" />
-          <r:RibbonButton Label="やり直し" SmallImageSource="{local:Glyph E7A6}" Command="local:Cmd.Redo" ToolTipTitle="やり直し (Ctrl+Y)" />
-        </r:RibbonGroup>
-        <r:RibbonGroup Header="ツール">
-          <r:RibbonRadioButton x:Name="toolSelect" Label="選択" LargeImageSource="{local:Glyph E8B0}" GroupName="tool" IsChecked="True" Checked="Tool_Checked" Tag="Select" ToolTipTitle="選択 (V)" />
-          <r:RibbonRadioButton x:Name="toolRect" Label="矩形" LargeImageSource="{local:Glyph E71A}" GroupName="tool" Checked="Tool_Checked" Tag="Rect" ToolTipTitle="矩形 (R)" />
-          <r:RibbonRadioButton x:Name="toolText" Label="文字" LargeImageSource="{local:Glyph E8D2}" GroupName="tool" Checked="Tool_Checked" Tag="Text" ToolTipTitle="文字 (T)" ToolTipDescription="文字の上をドラッグすると、その文字を覆う黒塗りを行ごとに作ります。" />
-          <r:RibbonRadioButton x:Name="toolFree" Label="フリーハンド" LargeImageSource="{local:Glyph E76D}" GroupName="tool" Checked="Tool_Checked" Tag="Freehand" ToolTipTitle="フリーハンド (B)" />
-          <r:RibbonRadioButton x:Name="toolEraser" Label="消しゴム" LargeImageSource="{local:Glyph E75C}" GroupName="tool" Checked="Tool_Checked" Tag="Eraser" ToolTipTitle="消しゴム (E)" />
-          <StackPanel Margin="6,4,2,0" VerticalAlignment="Top">
-            <TextBlock Text="太さ ( [ / ] )" Margin="0,0,0,2" />
-            <ComboBox x:Name="brushCombo" Width="80" SelectionChanged="Brush_SelectionChanged" />
-          </StackPanel>
-        </r:RibbonGroup>
-        <r:RibbonGroup Header="現在の理由">
-          <StackPanel Margin="4,4,4,0" VerticalAlignment="Top">
-            <TextBlock Text="新しい箇所に付ける理由" Margin="0,0,0,2" />
-            <ComboBox x:Name="currentReasonCombo" Width="170" SelectionChanged="CurrentReason_SelectionChanged" />
-          </StackPanel>
-        </r:RibbonGroup>
-        <r:RibbonGroup Header="箇所">
-          <r:RibbonButton Label="結合" SmallImageSource="{local:Glyph E71B}" Command="local:Cmd.Merge" ToolTipTitle="結合 (Ctrl+G)" ToolTipDescription="同じページの複数の箇所を1つにまとめます。" />
-          <r:RibbonButton Label="分割" SmallImageSource="{local:Glyph E8C6}" Command="local:Cmd.Split" ToolTipTitle="分割 (Ctrl+Shift+G)" ToolTipDescription="1つの箇所を図形ごとの箇所に分けます。" />
-          <r:RibbonButton Label="削除" SmallImageSource="{local:Glyph E74D}" Command="local:Cmd.Delete" ToolTipTitle="削除 (Delete)" />
-          <r:RibbonButton Label="次の未設定" LargeImageSource="{local:Glyph E7BA}" Command="local:Cmd.NextUnset" ToolTipTitle="次の未設定へ (F8)" ToolTipDescription="理由が設定されていない箇所へ順に移動します（Shift+F8 で前へ）。" />
-          <r:RibbonButton Label="検索" LargeImageSource="{local:Glyph E721}" Command="local:Cmd.Find" ToolTipTitle="検索 (Ctrl+F)" ToolTipDescription="語句や電話番号などを検索して、まとめて黒塗りにします。" />
-        </r:RibbonGroup>
-        <r:RibbonGroup Header="スタイル">
-          <r:RibbonRadioButton x:Name="styleBlack" Label="黒塗り" SmallImageSource="{local:Glyph E91F}" GroupName="style" IsChecked="True" Checked="Style_Checked" Tag="Black" />
-          <r:RibbonRadioButton x:Name="styleWhite" Label="白塗り+黒枠" SmallImageSource="{local:Glyph E739}" GroupName="style" Checked="Style_Checked" Tag="White" />
-        </r:RibbonGroup>
-        <r:RibbonGroup Header="設定">
-          <r:RibbonButton Label="設定" LargeImageSource="{local:Glyph E713}" Command="local:Cmd.Settings" />
-        </r:RibbonGroup>
-      </r:RibbonTab>
-      <r:RibbonTab Header="表示">
-        <r:RibbonGroup Header="画面">
-          <r:RibbonRadioButton x:Name="twoPane" Label="2画面" LargeImageSource="{local:Glyph E8A1}" GroupName="panes" IsChecked="True" Checked="Panes_Checked" ToolTipTitle="2画面 / 1画面 (F6)" />
-          <r:RibbonRadioButton x:Name="onePane" Label="1画面" LargeImageSource="{local:Glyph E7C3}" GroupName="panes" Checked="Panes_Checked" ToolTipTitle="2画面 / 1画面 (F6)" />
-        </r:RibbonGroup>
-        <r:RibbonGroup Header="ズーム">
-          <r:RibbonButton Label="拡大" SmallImageSource="{local:Glyph E8A3}" Command="local:Cmd.ZoomIn" />
-          <r:RibbonButton Label="縮小" SmallImageSource="{local:Glyph E71F}" Command="local:Cmd.ZoomOut" />
-          <r:RibbonButton Label="100%" SmallImageSource="{local:Glyph E71E}" Command="local:Cmd.Zoom100" ToolTipTitle="100% (Ctrl+1)" />
-          <r:RibbonButton Label="幅に合わせる" SmallImageSource="{local:Glyph E799}" Command="local:Cmd.FitWidth" ToolTipTitle="幅に合わせる (Ctrl+2)" />
-          <r:RibbonButton Label="全体" SmallImageSource="{local:Glyph E9A6}" Command="local:Cmd.FitPage" ToolTipTitle="全体 (Ctrl+0)" />
-        </r:RibbonGroup>
-        <r:RibbonGroup Header="パネル">
-          <r:RibbonCheckBox x:Name="showThumbs" Label="ページ一覧" IsChecked="True" Checked="Panels_Changed" Unchecked="Panels_Changed" />
-          <r:RibbonCheckBox x:Name="showList" Label="箇所リスト" IsChecked="True" Checked="Panels_Changed" Unchecked="Panels_Changed" />
-        </r:RibbonGroup>
-      </r:RibbonTab>
-    </r:Ribbon>
+    <!-- Command bar (ARCHITECTURE §11.1 / §11.7). Groups wrap onto a second row on narrow windows. -->
+    <Border DockPanel.Dock="Top" Background="{DynamicResource Bg.Bar}" BorderBrush="{DynamicResource Stroke.Divider}" BorderThickness="0,0,0,1" Padding="8,5">
+      <WrapPanel x:Name="commandBar" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Margin="0,2">
+          <t:IconButton Icon="&#xE8E5;" Label="開く" Command="local:Cmd.Open" ToolTip="開く (Ctrl+O)" />
+          <t:IconButton Icon="&#xE74E;" Label="保存" IsDropDown="True" ToolTip="確認用PDFとして保存">
+            <t:IconButton.ContextMenu>
+              <ContextMenu>
+                <MenuItem Header="確認用として保存" Command="local:Cmd.SaveReview" InputGestureText="Ctrl+S" />
+                <MenuItem Header="名前を付けて保存" Command="local:Cmd.SaveAs" InputGestureText="Ctrl+Shift+S" />
+              </ContextMenu>
+            </t:IconButton.ContextMenu>
+          </t:IconButton>
+          <t:IconButton Icon="&#xE896;" Label="確定出力" Command="local:Cmd.Export" ToolTip="確定出力 (Ctrl+E): 全ページを画像化して黒塗りを焼き込んだ開示用PDFを書き出します" />
+          <t:IconButton Icon="&#xE749;" Label="印刷" IsDropDown="True" ToolTip="印刷">
+            <t:IconButton.ContextMenu>
+              <ContextMenu>
+                <MenuItem Header="黒塗り済みを印刷" Command="local:Cmd.PrintRedacted" InputGestureText="Ctrl+P" />
+                <MenuItem Header="確認用を印刷（原本の内容が見えます）" Command="local:Cmd.PrintReview" />
+              </ContextMenu>
+            </t:IconButton.ContextMenu>
+          </t:IconButton>
+        </StackPanel>
+        <Border Style="{StaticResource BarSeparator}" />
+        <StackPanel Orientation="Horizontal" Margin="0,2">
+          <t:IconButton Icon="&#xE7A7;" Command="local:Cmd.Undo" ToolTip="元に戻す (Ctrl+Z)" />
+          <t:IconButton Icon="&#xE7A6;" Command="local:Cmd.Redo" ToolTip="やり直し (Ctrl+Y)" />
+        </StackPanel>
+        <Border Style="{StaticResource BarSeparator}" />
+        <StackPanel Orientation="Horizontal" Margin="0,2">
+          <t:IconRadio x:Name="toolSelect" Icon="&#xE8B0;" GroupName="tool" IsChecked="True" Checked="Tool_Checked" Tag="Select" ToolTip="選択 (V)" />
+          <t:IconRadio x:Name="toolRect" Icon="&#xE739;" GroupName="tool" Checked="Tool_Checked" Tag="Rect" ToolTip="矩形 (R)" />
+          <t:IconRadio x:Name="toolText" Icon="&#xE8D2;" GroupName="tool" Checked="Tool_Checked" Tag="Text" ToolTip="文字 (T): 文字の上をドラッグすると、その文字を行ごとに覆います" />
+          <t:IconRadio x:Name="toolFree" Icon="&#xE76D;" GroupName="tool" Checked="Tool_Checked" Tag="Freehand" ToolTip="フリーハンド (B)" />
+          <t:IconRadio x:Name="toolEraser" Icon="&#xE75C;" GroupName="tool" Checked="Tool_Checked" Tag="Eraser" ToolTip="消しゴム (E)" />
+          <ComboBox x:Name="brushCombo" Width="78" Margin="6,0,0,0" VerticalAlignment="Center" SelectionChanged="Brush_SelectionChanged" ToolTip="フリーハンドの太さ ( [ / ] )" />
+        </StackPanel>
+        <Border Style="{StaticResource BarSeparator}" />
+        <StackPanel Orientation="Horizontal" Margin="0,2">
+          <TextBlock Text="理由" VerticalAlignment="Center" Margin="2,0,8,0" Foreground="{DynamicResource Text.Secondary}" />
+          <ComboBox x:Name="currentReasonCombo" Width="150" VerticalAlignment="Center" SelectionChanged="CurrentReason_SelectionChanged" ToolTip="新しく作る箇所に付ける理由" />
+        </StackPanel>
+        <Border Style="{StaticResource BarSeparator}" />
+        <StackPanel Orientation="Horizontal" Margin="0,2">
+          <t:IconButton Icon="&#xE71B;" Command="local:Cmd.Merge" ToolTip="結合 (Ctrl+G): 同じページの複数の箇所を1つにまとめます" />
+          <t:IconButton Icon="&#xE8C6;" Command="local:Cmd.Split" ToolTip="分割 (Ctrl+Shift+G): 1つの箇所を図形ごとに分けます" />
+          <t:IconButton Icon="&#xE74D;" Command="local:Cmd.Delete" ToolTip="削除 (Delete)" />
+          <t:IconButton Icon="&#xE7BA;" Label="次の未設定" Command="local:Cmd.NextUnset" ToolTip="理由が設定されていない箇所へ順に移動 (F8 / Shift+F8 で前へ)" />
+          <t:IconButton Icon="&#xE721;" Label="検索" Command="local:Cmd.Find" ToolTip="語句や電話番号などを検索して、まとめて黒塗りにします (Ctrl+F)" />
+        </StackPanel>
+        <Border Style="{StaticResource BarSeparator}" />
+        <StackPanel Orientation="Horizontal" Margin="0,2">
+          <t:IconButton x:Name="styleButton" Icon="&#xE790;" Label="黒塗り" IsDropDown="True" ToolTip="スタイル（文書全体に適用）">
+            <t:IconButton.ContextMenu>
+              <ContextMenu>
+                <MenuItem x:Name="styleBlack" Header="黒塗り" IsChecked="True" Click="StyleMenu_Click" Tag="Black" />
+                <MenuItem x:Name="styleWhite" Header="白塗り+黒枠" Click="StyleMenu_Click" Tag="White" />
+              </ContextMenu>
+            </t:IconButton.ContextMenu>
+          </t:IconButton>
+        </StackPanel>
+        <Border Style="{StaticResource BarSeparator}" />
+        <StackPanel Orientation="Horizontal" Margin="0,2">
+          <t:IconButton Icon="&#xE890;" Label="表示" IsDropDown="True" ToolTip="表示の切り替え">
+            <t:IconButton.ContextMenu>
+              <ContextMenu>
+                <MenuItem x:Name="twoPane" Header="2画面で表示（原本と並べる）" IsCheckable="True" IsChecked="True" Checked="Panes_Checked" Unchecked="Panes_Checked" InputGestureText="F6" />
+                <MenuItem x:Name="showThumbs" Header="ページ一覧" IsCheckable="True" IsChecked="True" Checked="Panels_Changed" Unchecked="Panels_Changed" />
+                <MenuItem x:Name="showList" Header="箇所リスト・検索" IsCheckable="True" IsChecked="True" Checked="Panels_Changed" Unchecked="Panels_Changed" />
+                <Separator />
+                <MenuItem Header="拡大" Command="local:Cmd.ZoomIn" InputGestureText="Ctrl++" />
+                <MenuItem Header="縮小" Command="local:Cmd.ZoomOut" InputGestureText="Ctrl+-" />
+                <MenuItem Header="100%" Command="local:Cmd.Zoom100" InputGestureText="Ctrl+1" />
+                <MenuItem Header="幅に合わせる" Command="local:Cmd.FitWidth" InputGestureText="Ctrl+2" />
+                <MenuItem Header="全体" Command="local:Cmd.FitPage" InputGestureText="Ctrl+0" />
+                <Separator />
+                <MenuItem Header="テーマ">
+                  <MenuItem x:Name="themeLight" Header="ライト" IsCheckable="True" Click="Theme_Click" Tag="light" />
+                  <MenuItem x:Name="themeDark" Header="ダーク" IsCheckable="True" Click="Theme_Click" Tag="dark" />
+                </MenuItem>
+              </ContextMenu>
+            </t:IconButton.ContextMenu>
+          </t:IconButton>
+          <t:IconButton Icon="&#xE713;" Command="local:Cmd.Settings" ToolTip="設定" />
+        </StackPanel>
+      </WrapPanel>
+    </Border>
 
     <StatusBar DockPanel.Dock="Bottom">
       <StatusBarItem>
         <StackPanel Orientation="Horizontal">
-          <Button x:Name="prevPageButton" Content="&#xE76B;" FontFamily="Segoe MDL2 Assets" Width="24" Click="PrevPage_Click" ToolTip="前のページ (PageUp)" Background="Transparent" BorderThickness="0" />
+          <Button x:Name="prevPageButton" Content="&#xE76B;" FontFamily="{StaticResource IconFont}" Style="{StaticResource SubtleButton}" Click="PrevPage_Click" ToolTip="前のページ (PageUp)" />
           <TextBlock Text="ページ" VerticalAlignment="Center" Margin="4,0,4,0" />
           <TextBox x:Name="pageBox" Width="44" TextAlignment="Right" KeyDown="PageBox_KeyDown" LostKeyboardFocus="PageBox_LostFocus" ToolTip="ページ番号を入れて Enter" />
           <TextBlock x:Name="pageCountText" Text="/ -" VerticalAlignment="Center" Margin="4,0,4,0" />
-          <Button x:Name="nextPageButton" Content="&#xE76C;" FontFamily="Segoe MDL2 Assets" Width="24" Click="NextPage_Click" ToolTip="次のページ (PageDown)" Background="Transparent" BorderThickness="0" />
+          <Button x:Name="nextPageButton" Content="&#xE76C;" FontFamily="{StaticResource IconFont}" Style="{StaticResource SubtleButton}" Click="NextPage_Click" ToolTip="次のページ (PageDown)" />
         </StackPanel>
       </StatusBarItem>
       <Separator />
@@ -158,7 +176,7 @@
       <Separator />
       <StatusBarItem><TextBlock x:Name="stState" Text="ファイルが開かれていません" /></StatusBarItem>
       <Separator />
-      <StatusBarItem><TextBlock x:Name="stHint" Foreground="DimGray" /></StatusBarItem>
+      <StatusBarItem><TextBlock x:Name="stHint" /></StatusBarItem>
     </StatusBar>
 
     <Grid x:Name="mainGrid">
@@ -174,7 +192,7 @@
 
       <ListBox x:Name="thumbList" Grid.Column="0" SelectionMode="Single" SelectionChanged="Thumb_SelectionChanged"
                VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel"
-               ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="#FFEDEDED" BorderThickness="0">
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="Transparent" BorderThickness="0">
         <ListBox.ItemsPanel>
           <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
         </ListBox.ItemsPanel>
@@ -182,7 +200,7 @@
           <DataTemplate DataType="{x:Type local:ThumbVM}">
             <StackPanel Margin="4">
               <Grid HorizontalAlignment="Center">
-                <Border BorderBrush="#FF9A9A9A" BorderThickness="1" Background="White">
+                <Border BorderBrush="{DynamicResource Stroke.Card}" BorderThickness="1" Background="White">
                   <Grid>
                     <Image Source="{Binding Image}" Width="120" Height="{Binding HeightDip}" Stretch="Fill" />
                     <Image Source="{Binding Overlay}" Width="120" Height="{Binding HeightDip}" Stretch="Fill" />
@@ -206,44 +224,44 @@
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>
-      <GridSplitter x:Name="split1" Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="#FFD0D0D0" />
+      <GridSplitter x:Name="split1" Grid.Column="1" Width="4" HorizontalAlignment="Stretch" />
 
       <Grid Grid.Column="2" x:Name="leftHost">
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-        <Border Grid.ColumnSpan="2" Background="#FF3C3F46" Padding="6,2"><TextBlock Text="原本（閲覧のみ）" Foreground="White" /></Border>
+        <Border Grid.ColumnSpan="2" Padding="10,4"><TextBlock Text="原本（閲覧のみ）" Foreground="{DynamicResource Text.Secondary}" FontSize="12" /></Border>
         <local:PageCanvas x:Name="leftCanvas" Grid.Row="1" />
         <ScrollBar x:Name="leftV" Grid.Row="1" Grid.Column="1" Orientation="Vertical" Scroll="ScrollBar_Scroll" />
         <ScrollBar x:Name="leftH" Grid.Row="2" Orientation="Horizontal" Scroll="ScrollBar_Scroll" />
       </Grid>
-      <Border Grid.Column="3" Background="#FF2B2D31" />
+      <Border Grid.Column="3" />
       <Grid Grid.Column="4" x:Name="rightHost">
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-        <Border Grid.ColumnSpan="2" Background="#FF1F1F1F" Padding="6,2"><TextBlock Text="黒塗りプレビュー（編集）  Space 押下中は透過" Foreground="White" /></Border>
+        <Border Grid.ColumnSpan="2" Padding="10,4"><TextBlock Foreground="{DynamicResource Text.Secondary}" FontSize="12"><Run Text="黒塗りプレビュー（編集）" Foreground="{DynamicResource Text.Primary}" FontWeight="SemiBold" /><Run Text="   Space 押下中は透過" /></TextBlock></Border>
         <local:PageCanvas x:Name="rightCanvas" Grid.Row="1" />
         <ScrollBar x:Name="rightV" Grid.Row="1" Grid.Column="1" Orientation="Vertical" Scroll="ScrollBar_Scroll" />
         <ScrollBar x:Name="rightH" Grid.Row="2" Orientation="Horizontal" Scroll="ScrollBar_Scroll" />
-        <TextBlock x:Name="emptyHint" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="White" FontSize="16" TextAlignment="Center"
+        <TextBlock x:Name="emptyHint" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource Text.Secondary}" FontSize="16" TextAlignment="Center"
                    Text="「開く」(Ctrl+O) で PDF を開くか、&#x0a;PDF ファイルをここにドラッグしてください" />
       </Grid>
-      <GridSplitter x:Name="split2" Grid.Column="5" Width="4" HorizontalAlignment="Stretch" Background="#FFD0D0D0" />
+      <GridSplitter x:Name="split2" Grid.Column="5" Width="4" HorizontalAlignment="Stretch" />
 
       <TabControl Grid.Column="6" x:Name="sidePanel" BorderThickness="0" Padding="0">
         <TabItem Header="箇所リスト" x:Name="listTab">
           <DockPanel x:Name="listPanel">
-            <Border DockPanel.Dock="Top" Background="#FFEDEDED" Padding="6,3">
+            <Border DockPanel.Dock="Top" Padding="8,6">
               <DockPanel>
                 <Button DockPanel.Dock="Right" Command="local:Cmd.NextUnset" Padding="6,1" ToolTip="次の未設定へ (F8)">
                   <StackPanel Orientation="Horizontal">
                     <TextBlock Text="次の未設定" />
-                    <TextBlock Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" Margin="4,2,0,0" FontSize="10" />
+                    <TextBlock Text="&#xE76C;" FontFamily="{StaticResource IconFont}" Margin="4,2,0,0" FontSize="10" />
                   </StackPanel>
                 </Button>
-                <TextBlock Text="クリックで移動・右クリックでメニュー" Foreground="DimGray" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="クリックで移動・右クリックでメニュー" Foreground="{DynamicResource Text.Secondary}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
               </DockPanel>
             </Border>
-            <Border DockPanel.Dock="Bottom" Background="#FFF5F5F5" BorderBrush="#FFD0D0D0" BorderThickness="0,1,0,0" Padding="6">
+            <Border DockPanel.Dock="Bottom" Background="{DynamicResource Bg.Bar}" BorderBrush="{DynamicResource Stroke.Divider}" BorderThickness="0,1,0,0" Padding="10,8">
               <StackPanel>
                 <TextBlock x:Name="reasonEditTitle" Text="選択した箇所の理由" Margin="0,0,0,3" />
                 <ComboBox x:Name="reasonEditCombo" SelectionChanged="ReasonEdit_SelectionChanged" IsEnabled="False" />
@@ -258,11 +276,11 @@
                 <ContextMenu />
               </ListView.ContextMenu>
               <ListView.ItemContainerStyle>
-                <Style TargetType="ListViewItem">
+                <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
                   <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                   <Style.Triggers>
                     <DataTrigger Binding="{Binding IsUnset}" Value="True">
-                      <Setter Property="Background" Value="#FFFFE2C2" />
+                      <Setter Property="Background" Value="{DynamicResource Bg.Warn.Row}" />
                       <Setter Property="ToolTip" Value="理由が設定されていません" />
                     </DataTrigger>
                   </Style.Triggers>
@@ -277,7 +295,7 @@
                     <GridViewColumn.CellTemplate>
                       <DataTemplate>
                         <StackPanel Orientation="Horizontal" ToolTip="{Binding Kind}">
-                          <TextBlock Text="{Binding KindGlyph}" FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Margin="0,1,4,0" />
+                          <TextBlock Text="{Binding KindGlyph}" FontFamily="{StaticResource IconFont}" Margin="0,1,4,0" />
                           <TextBlock Text="{Binding Kind}" />
                         </StackPanel>
                       </DataTemplate>
@@ -308,11 +326,11 @@
                 <Button Content="すべて選ぶ" Padding="6,1" Click="SearchSelectAll_Click" />
                 <Button Content="選択を外す" Padding="6,1" Margin="4,0,0,0" Click="SearchSelectNone_Click" />
               </StackPanel>
-              <Button x:Name="searchApplyButton" Content="選んだ箇所を黒塗りにする" Margin="0,6,0,0" Padding="6,4" FontWeight="Bold" Click="SearchApply_Click" IsEnabled="False" />
-              <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Foreground="DimGray" FontSize="11"
+              <Button x:Name="searchApplyButton" Style="{StaticResource AccentButton}" Content="選んだ箇所を黒塗りにする" Margin="0,6,0,0" Padding="6,4" FontWeight="Bold" Click="SearchApply_Click" IsEnabled="False" />
+              <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{DynamicResource Text.Secondary}" FontSize="11"
                          Text="文字情報のない部分（スキャン画像・図の中の文字など）は検索できません。黒塗り漏れがないか、必ず目視でも確認してください。" />
             </StackPanel>
-            <ListView x:Name="searchList" SelectionMode="Single" SelectionChanged="SearchList_SelectionChanged" BorderThickness="1">
+            <ListView x:Name="searchList" SelectionMode="Single" SelectionChanged="SearchList_SelectionChanged" BorderThickness="1" BorderBrush="{DynamicResource Stroke.Control}">
               <ListView.View>
                 <GridView>
                   <GridViewColumn Width="30">

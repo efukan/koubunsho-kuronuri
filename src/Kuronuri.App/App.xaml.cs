@@ -32,6 +32,7 @@ namespace Kuronuri.App
 
             string settingsPath = SettingsStore.DefaultPath();
             var settings = SettingsStore.Load(settingsPath);
+            Themes.ThemeManager.Apply(settings.Theme);
             var win = new MainWindow(_worker, settings, settingsPath);
             MainWindow = win;
             win.Show();

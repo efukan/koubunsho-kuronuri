@@ -23,6 +23,7 @@ namespace Kuronuri.Core.Settings
         [DataMember(Name = "brushWidthsMm", Order = 6)] public List<double> BrushWidthsMm = new List<double> { 2, 4, 6, 10 };
         [DataMember(Name = "printDpi", Order = 7)] public int PrintDpi = 300;
         [DataMember(Name = "window", Order = 8, EmitDefaultValue = false)] public WindowLayout? Window;
+        [DataMember(Name = "theme", Order = 9)] public string Theme = "light";
 
         public static readonly int[] ExportDpiChoices = { 150, 200, 300 };
         public static readonly int[] PrintDpiChoices = { 200, 300 };
@@ -51,6 +52,7 @@ namespace Kuronuri.Core.Settings
             if (BrushWidthsMm.Count == 0) BrushWidthsMm = d.BrushWidthsMm;
             if (!PrintDpiChoices.Contains(PrintDpi)) PrintDpi = d.PrintDpi;
             if (Window != null && !Window.IsUsable()) Window = null;
+            if (Theme != "light" && Theme != "dark") Theme = d.Theme;
             App = "kuronuri"; Schema = 1;
             return this;
         }
@@ -83,7 +85,7 @@ namespace Kuronuri.Core.Settings
         {
             var d = new AppSettings(false);
             App = d.App; Schema = d.Schema; Reasons = d.Reasons; ExportDpi = d.ExportDpi; JpegQuality = d.JpegQuality;
-            DefaultStyle = d.DefaultStyle; BrushWidthsMm = d.BrushWidthsMm; PrintDpi = d.PrintDpi; Window = null;
+            DefaultStyle = d.DefaultStyle; BrushWidthsMm = d.BrushWidthsMm; PrintDpi = d.PrintDpi; Window = null; Theme = d.Theme;
         }
 
         public AppSettings() { }

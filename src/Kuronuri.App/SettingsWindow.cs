@@ -18,7 +18,7 @@ namespace Kuronuri.App
         }
 
         private readonly ObservableCollection<PresetRow> _rows;
-        private readonly ComboBox _dpi, _printDpi, _style;
+        private readonly ComboBox _dpi, _printDpi, _style, _theme;
         private readonly TextBox _quality, _widths;
 
         public AppSettings Result { get; private set; }
@@ -27,10 +27,12 @@ namespace Kuronuri.App
         {
             Result = current;
             Title = "設定";
-            Width = 520; Height = 560;
+            Width = 560; Height = 660;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             ShowInTaskbar = false;
-            FontFamily = new System.Windows.Media.FontFamily("Yu Gothic UI, Meiryo, MS Gothic");
+            FontFamily = (System.Windows.Media.FontFamily)Application.Current.FindResource("UiFont");
+            FontSize = 13;
+            Themes.ThemeManager.Attach(this);
 
             _rows = new ObservableCollection<PresetRow>(current.Reasons.Select(r => new PresetRow { Code = r.Code, Label = r.Label }));
             var grid = new DataGrid
@@ -44,17 +46,19 @@ namespace Kuronuri.App
             _dpi = Combo(AppSettings.ExportDpiChoices.Select(d => d + " dpi").ToArray(), Array.IndexOf(AppSettings.ExportDpiChoices, current.ExportDpi));
             _printDpi = Combo(AppSettings.PrintDpiChoices.Select(d => d + " dpi").ToArray(), Array.IndexOf(AppSettings.PrintDpiChoices, current.PrintDpi));
             _style = Combo(new[] { "黒塗り", "白塗り+黒枠" }, current.DefaultStyle == "whiteBorder" ? 1 : 0);
+            _theme = Combo(new[] { "ライト", "ダーク" }, current.Theme == "dark" ? 1 : 0);
             _quality = new TextBox { Text = current.JpegQuality.ToString(CultureInfo.InvariantCulture), Width = 60, HorizontalAlignment = HorizontalAlignment.Left };
             _widths = new TextBox { Text = string.Join(", ", current.BrushWidthsMm.Select(w => w.ToString("0.#", CultureInfo.InvariantCulture))), Width = 200, HorizontalAlignment = HorizontalAlignment.Left };
 
             var form = new Grid { Margin = new Thickness(0, 12, 0, 0) };
-            form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(170) });
+            form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(210) });
             form.ColumnDefinitions.Add(new ColumnDefinition());
             AddRow(form, "確定出力の解像度", _dpi);
             AddRow(form, "JPEG 品質（50〜100）", _quality);
             AddRow(form, "既定のスタイル", _style);
             AddRow(form, "ブラシの太さ（mm, カンマ区切り）", _widths);
             AddRow(form, "印刷の解像度", _printDpi);
+            AddRow(form, "画面のテーマ", _theme);
 
             var ok = new Button { Content = "OK", Width = 88, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
             ok.Click += (s, e) => { if (Apply()) DialogResult = true; };
@@ -69,7 +73,7 @@ namespace Kuronuri.App
             root.Children.Add(new TextBlock
             {
                 Text = "設定は EXE と同じフォルダの settings.json に保存されます。文書に関する情報は保存しません。",
-                TextWrapping = TextWrapping.Wrap, Foreground = System.Windows.Media.Brushes.DimGray, Margin = new Thickness(0, 10, 0, 0),
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0),
             });
             root.Children.Add(buttons);
             Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -121,6 +125,7 @@ namespace Kuronuri.App
                 DefaultStyle = _style.SelectedIndex == 1 ? "whiteBorder" : "black",
                 BrushWidthsMm = widths,
                 PrintDpi = AppSettings.PrintDpiChoices[Math.Max(0, _printDpi.SelectedIndex)],
+                Theme = _theme.SelectedIndex == 1 ? "dark" : "light",
             }.Normalize();
             return true;
         }

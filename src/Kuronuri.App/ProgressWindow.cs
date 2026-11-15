@@ -24,10 +24,12 @@ namespace Kuronuri.App
             ResizeMode = ResizeMode.NoResize;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             ShowInTaskbar = false;
-            FontFamily = new System.Windows.Media.FontFamily("Yu Gothic UI, Meiryo, MS Gothic");
+            FontFamily = (System.Windows.Media.FontFamily)Application.Current.FindResource("UiFont");
+            FontSize = 13;
+            Themes.ThemeManager.Attach(this);
             var panel = new StackPanel { Margin = new Thickness(16) };
             panel.Children.Add(new TextBlock { Text = title, Margin = new Thickness(0, 0, 0, 8), FontSize = 13 });
-            _bar = new ProgressBar { Height = 16, IsIndeterminate = total == null, Maximum = Math.Max(1, total ?? 1) };
+            _bar = new ProgressBar { Height = 4, IsIndeterminate = total == null, Maximum = Math.Max(1, total ?? 1) };
             panel.Children.Add(_bar);
             _text = new TextBlock { Margin = new Thickness(0, 6, 0, 0), Text = total == null ? "" : "0 / " + total + " ページ" };
             panel.Children.Add(_text);

@@ -22,7 +22,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Kuronuri.Core\Kuronuri.Core.csproj" />
     <Reference Include="System.Runtime.Serialization" />
-    <Reference Include="System.Windows.Controls.Ribbon" />
     <Reference Include="ReachFramework" />
     <Reference Include="System.Printing" />
   </ItemGroup>

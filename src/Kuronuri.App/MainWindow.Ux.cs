@@ -30,6 +30,9 @@ namespace Kuronuri.App
 
         private void InitUx()
         {
+            Themes.ThemeManager.Attach(this);
+            Themes.ThemeManager.Changed += (s, e) => { leftCanvas.InvalidateVisual(); rightCanvas.InvalidateVisual(); UpdateThemeChecks(); };
+            UpdateThemeChecks();
             searchList.ItemsSource = _searchRows;
             presetCombo.Items.Add(new ComboBoxItem { Content = "定型から選ぶ…", Tag = null });
             foreach (var p in TextSearch.Presets) presetCombo.Items.Add(new ComboBoxItem { Content = p.Name, Tag = p.Pattern });
@@ -78,6 +81,40 @@ namespace Kuronuri.App
             stHint.Text = text;
             _hintTimer ??= new DispatcherTimer(TimeSpan.FromSeconds(4), DispatcherPriority.Normal, (s, e) => { _hintTimer!.Stop(); stHint.Text = ToolHint(_tool); }, Dispatcher);
             _hintTimer.Stop(); _hintTimer.Start();
+        }
+
+        // ================================================================== style dropdown
+
+        private void StyleMenu_Click(object sender, RoutedEventArgs e)
+        {
+            styleBlack.IsChecked = ReferenceEquals(sender, styleBlack);
+            styleWhite.IsChecked = ReferenceEquals(sender, styleWhite);
+            Style_Checked(sender, e);
+            UpdateStyleButton();
+        }
+
+        /// <summary>The dropdown shows the current style of the document.</summary>
+        private void UpdateStyleButton()
+        {
+            bool white = styleWhite.IsChecked;
+            styleButton.Label = white ? "白塗り+黒枠" : "黒塗り";
+            // The icon stays the palette glyph (set in XAML): a black / white swatch glyph would invert in dark mode.
+        }
+
+        // ================================================================== theme (ARCHITECTURE §11.7)
+
+        private void Theme_Click(object sender, RoutedEventArgs e)
+        {
+            string theme = (sender as FrameworkElement)?.Tag as string ?? Themes.ThemeManager.Light;
+            _settings.Theme = theme;
+            Themes.ThemeManager.Apply(theme);
+            SettingsStore.TrySave(_settingsPath, _settings);   // silently ignored when the folder is not writable
+        }
+
+        private void UpdateThemeChecks()
+        {
+            themeLight.IsChecked = Themes.ThemeManager.Current == Themes.ThemeManager.Light;
+            themeDark.IsChecked = Themes.ThemeManager.Current == Themes.ThemeManager.Dark;
         }
 
         // ================================================================== nudge
@@ -441,7 +478,7 @@ namespace Kuronuri.App
             colList.Width = new GridLength(w.ListWidth);
             showThumbs.IsChecked = w.ShowThumbs;
             showList.IsChecked = w.ShowList;
-            if (w.TwoPane) twoPane.IsChecked = true; else onePane.IsChecked = true;
+            twoPane.IsChecked = w.TwoPane;
             Panels_Changed(this, new RoutedEventArgs());
         }
 

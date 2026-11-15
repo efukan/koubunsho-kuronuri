@@ -48,7 +48,8 @@ namespace Kuronuri.App
     /// </summary>
     public sealed class PageCanvas : FrameworkElement
     {
-        private static readonly Brush Background = Frozen(new SolidColorBrush(Color.FromRgb(0x5c, 0x5f, 0x66)));
+        private static readonly Brush FallbackBackground = Frozen(new SolidColorBrush(Color.FromRgb(0xE6, 0xE6, 0xE6)));
+        private static readonly Pen PageEdge = Frozen(new Pen(new SolidColorBrush(Color.FromArgb(40, 0, 0, 0)), 1));
         private static readonly Brush SelBrush = Frozen(new SolidColorBrush(Color.FromArgb(40, 0, 120, 215)));
         private static readonly Brush PreviewFill = Frozen(new SolidColorBrush(Color.FromArgb(110, 0, 0, 0)));
         private static readonly Brush BadgeBack = Frozen(new SolidColorBrush(Color.FromArgb(220, 0, 84, 166)));
@@ -176,13 +177,13 @@ namespace Kuronuri.App
 
         protected override void OnRender(DrawingContext dc)
         {
-            dc.DrawRectangle(Background, null, new Rect(0, 0, ActualWidth, ActualHeight));
+            dc.DrawRectangle(TryFindResource("Bg.Canvas") as Brush ?? FallbackBackground, null, new Rect(0, 0, ActualWidth, ActualHeight));
             var s = Host?.Session;
             if (s == null) return;
             var v = Host!.View;
             var (ox, oy, k) = Origin();
             var pageRect = new Rect(ox, oy, v.PageW, v.PageH);
-            dc.DrawRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(80, 0, 0, 0)), 3), new Rect(ox + 2, oy + 2, v.PageW, v.PageH));
+            dc.DrawRectangle(null, PageEdge, new Rect(ox - 0.5, oy - 0.5, v.PageW + 1, v.PageH + 1));
             DrawPage(dc, pageRect);
             if (!Editable) return;
 
