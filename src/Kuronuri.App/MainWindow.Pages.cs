@@ -38,13 +38,13 @@ namespace Kuronuri.App
             _shownLayout = l;
         }
 
-        /// <summary>Centres a box given in base coordinates of <paramref name="basePage"/> (the page must be shown).</summary>
+        /// <summary>Centres a box given in base coordinates of <paramref name="basePage"/>; that page becomes the current one.</summary>
         private void CenterOnBase(int basePage, BoxD box)
         {
             var s = _session!;
             var p = s.Pages[basePage];
             var c = CoordMap.ToView(s.Layout.RotationOf(basePage), p.Width, p.Height, new Point2((box.L + box.R) / 2, (box.T + box.B) / 2));
-            _view.CenterOn(c.X, c.Y);
+            _view.CenterOn(s.ViewOf(basePage), c.X, c.Y);
         }
 
         private void UpdateExcludedBanner()

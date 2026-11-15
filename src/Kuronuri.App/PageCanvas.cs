@@ -34,17 +34,18 @@ namespace Kuronuri.App
         /// <summary>Text of the page when it has been read; otherwise null (and reading is started).</summary>
         PageText? TextFor(int page);
 
-        /// <summary>Rectangles of the search hit shown on the current page (highlight only, not redactions).</summary>
-        IReadOnlyList<RectShape> SearchHighlight { get; }
+        /// <summary>Rectangles of the search hit being looked at on an original page (highlight only, not redactions).</summary>
+        IReadOnlyList<RectShape> SearchHighlightFor(int basePage);
 
         /// <summary>Opens the item context menu for the current selection.</summary>
         void ShowItemMenu(PageCanvas source);
     }
 
     /// <summary>
-    /// One page pane. Draws the page bitmap (shared with the other pane through the cache) at device resolution and, when
-    /// <see cref="Editable"/>, the redaction overlays and the tool interactions. Everything is drawn from the shared
-    /// <see cref="ViewState"/>; there is no per-pane scroll state.
+    /// One page pane. Draws the visible pages of the continuous column (bitmaps shared with the other pane through the
+    /// cache) at device resolution and, when <see cref="Editable"/>, the redaction overlays and the tool interactions.
+    /// Everything is drawn from the shared <see cref="ViewState"/>; there is no per-pane scroll state. Input goes to the
+    /// page under the pointer when the button is pressed (ARCHITECTURE §6).
     /// </summary>
     public sealed class PageCanvas : FrameworkElement
     {
@@ -61,6 +62,7 @@ namespace Kuronuri.App
 
         private const double HandleDip = 8;
         private const long BasePlaceholderPixels = 4_000_000;
+        private const int MaxDrawnPages = 64;
 
         public PageCanvas()
         {
@@ -93,22 +95,51 @@ namespace Kuronuri.App
             return Math.Min(1, Math.Min(ActualWidth / v.ViewportW, ActualHeight / v.ViewportH));
         }
 
-        /// <summary>Origin and scale in the pane's drawing coordinates (before <see cref="PaneScale"/> is applied).</summary>
+        /// <summary>
+        /// View position of the page that the geometry below refers to: while drawing, each visible page in turn; for input,
+        /// the page under the pointer when the button went down (kept for the whole drag).
+        /// </summary>
+        private int _active;
+
+        /// <summary>Origin of the <see cref="_active"/> page and scale in the pane's drawing coordinates (before <see cref="PaneScale"/>).</summary>
         private (double Ox, double Oy, double K) Origin()
         {
             var v = Host!.View;
             double k = v.DipPerPt, f = PaneScale();
             // Placement in the editing pane, then centred in this pane (which may differ in size: the original pane).
-            double ox = (v.PageW < v.ViewportW ? (v.ViewportW - v.PageW) / 2 : -v.ScrollX) + (ActualWidth / f - v.ViewportW) / 2;
-            double oy = (v.PageH < v.ViewportH ? (v.ViewportH - v.PageH) / 2 : -v.ScrollY) + (ActualHeight / f - v.ViewportH) / 2;
+            var (x, y) = v.PageOrigin(_active);
+            double ox = x + (ActualWidth / f - v.ViewportW) / 2;
+            double oy = y + (ActualHeight / f - v.ViewportH) / 2;
             double s = DpiScale;
             return (Math.Round(ox * s) / s, Math.Round(oy * s) / s, k);
         }
 
+        /// <summary>A height of this pane in the viewport coordinates of the editing pane.</summary>
+        private double ToViewportY(double paneY)
+        {
+            var v = Host!.View;
+            double f = PaneScale();
+            return paneY / f - (ActualHeight / f - v.ViewportH) / 2;
+        }
+
+        private int PageUnder(Point p) => Host!.View.PageAt(ToViewportY(p.Y));
+
+        /// <summary>Pages that intersect this pane (it can show more than the editing pane when it is larger).</summary>
+        private (int First, int Last) VisibleInPane()
+        {
+            var v = Host!.View;
+            if (v.PageCount == 0) return (0, -1);
+            double top = ToViewportY(0), bottom = ToViewportY(ActualHeight);
+            int first = v.PageAt(top), last = v.PageAt(bottom);
+            while (first < last && v.PageOrigin(first).Y + v.PageSizePt(first).H * v.DipPerPt < top) first++;
+            while (last > first && v.PageOrigin(last).Y > bottom) last--;
+            return (first, Math.Min(last, first + MaxDrawnPages - 1));
+        }
+
         // Page layout (ARCHITECTURE §2.4 / §4.4): the view shows the original page BasePage turned by Rot quarter turns.
         // Items and all interaction state are kept in base coordinates; only drawing and the mouse go through CoordMap.
-        private int BasePage => Host!.Session!.BaseOf(Host.View.PageIndex);
-        private int Rot => Host!.Session!.RotationOfView(Host.View.PageIndex);
+        private int BasePage => Host!.Session!.BaseOf(_active);
+        private int Rot => Host!.Session!.RotationOfView(_active);
         private double BaseW => Host!.Session!.Pages[BasePage].Width;
         private double BaseH => Host!.Session!.Pages[BasePage].Height;
 
@@ -140,23 +171,37 @@ namespace Kuronuri.App
 
         // ------------------------------------------------------------------ bitmaps
 
-        private CancellationTokenSource? _cts;
-        private RenderKey? _pending;
+        // Requests made while drawing; after each draw, requests no longer wanted (pages scrolled away, old zoom) are cancelled.
+        private readonly Dictionary<RenderKey, CancellationTokenSource> _inflight = new Dictionary<RenderKey, CancellationTokenSource>();
+        private readonly HashSet<RenderKey> _wanted = new HashSet<RenderKey>();
         private readonly DispatcherTimer _regionTimer;
-        private RenderKey? _lastRegion;
+        private HashSet<RenderKey> _lastRegions = new HashSet<RenderKey>();
+        private readonly HashSet<RenderKey> _wantRegions = new HashSet<RenderKey>();
 
         private void Request(PageRenderService svc, RenderKey key)
         {
-            if (_pending == key) return;
-            _cts?.Cancel();
-            _cts = new CancellationTokenSource();
-            _pending = key;
-            var token = _cts.Token;
-            svc.RenderAsync(key, token).ContinueWith(t =>
+            _wanted.Add(key);
+            if (_inflight.ContainsKey(key)) return;
+            var cts = new CancellationTokenSource();
+            _inflight[key] = cts;
+            svc.RenderAsync(key, cts.Token).ContinueWith(t =>
             {
-                if (_pending == key) _pending = null;
+                if (_inflight.TryGetValue(key, out var c) && ReferenceEquals(c, cts)) _inflight.Remove(key);
                 if (t.Status == TaskStatus.RanToCompletion) InvalidateVisual();
             }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        /// <summary>After drawing: start the visible regions once scrolling stops, and drop requests that are no longer needed.</summary>
+        private void FlushRequests(PageRenderService? svc)
+        {
+            if (svc != null && _wantRegions.Count > 0)
+            {
+                if (!_wantRegions.SetEquals(_lastRegions)) { _lastRegions = new HashSet<RenderKey>(_wantRegions); _regionTimer.Stop(); _regionTimer.Start(); }
+                else if (!_regionTimer.IsEnabled) foreach (var k in _wantRegions) Request(svc, k);
+            }
+            _wantRegions.Clear();
+            foreach (var kv in _inflight.Where(kv => !_wanted.Contains(kv.Key)).ToList()) { kv.Value.Cancel(); _inflight.Remove(kv.Key); }
+            _wanted.Clear();
         }
 
         private void DrawPage(DrawingContext dc, Rect pageRect)
@@ -167,7 +212,8 @@ namespace Kuronuri.App
             if (svc == null) return;
             var v = Host.View;
             double dps = v.DipPerPt * DpiScale;   // device px per pt
-            Kuronuri.Core.Rendering.PageRenderer.PixelSize(v.PageWidthPt, v.PageHeightPt, 72 * dps, long.MaxValue, out int wpx, out int hpx, out _);
+            var (vw, vh) = v.PageSizePt(_active);
+            Kuronuri.Core.Rendering.PageRenderer.PixelSize(vw, vh, 72 * dps, long.MaxValue, out int wpx, out int hpx, out _);
             int page = BasePage, rot = Rot;
 
             if ((long)wpx * hpx <= PageRenderService.FullRenderLimitPixels)
@@ -204,8 +250,7 @@ namespace Kuronuri.App
                 return;
             }
             if (svc.Pages.Get(baseKey) == null) { Request(svc, baseKey); return; }
-            if (_lastRegion != regionKey) { _lastRegion = regionKey; _regionTimer.Stop(); _regionTimer.Start(); return; }   // wait until scrolling stops
-            if (!_regionTimer.IsEnabled) Request(svc, regionKey);
+            _wantRegions.Add(regionKey);   // requested in FlushRequests once scrolling stops
         }
 
         // ------------------------------------------------------------------ drawing
@@ -214,22 +259,47 @@ namespace Kuronuri.App
         {
             dc.DrawRectangle(TryFindResource("Bg.Canvas") as Brush ?? FallbackBackground, null, new Rect(0, 0, ActualWidth, ActualHeight));
             var s = Host?.Session;
-            if (s == null) return;
-            var v = Host!.View;
-            var (ox, oy, k) = Origin();
-            var pageRect = new Rect(ox, oy, v.PageW, v.PageH);
-            if (!Editable)
+            if (s == null || Host!.View.PageCount == 0) return;
+            var (first, last) = VisibleInPane();
+            int keep = _active;   // the page of the drag in progress
+            try
             {
-                double f = PaneScale();
-                if (f < 1) dc.PushTransform(new ScaleTransform(f, f));
-                dc.DrawRectangle(null, PageEdge, new Rect(ox - 0.5, oy - 0.5, v.PageW + 1, v.PageH + 1));
-                DrawPage(dc, pageRect);
-                if (f < 1) dc.Pop();
-                return;
+                if (!Editable)
+                {
+                    double f = PaneScale();
+                    if (f < 1) dc.PushTransform(new ScaleTransform(f, f));
+                    for (_active = first; _active <= last; _active++) DrawPageFrame(dc);
+                    if (f < 1) dc.Pop();
+                    return;
+                }
+                var ordered = Kuronuri.Core.Geometry.CoordMap.InDisplayOrder(s.Items.Items, s.Layout, s.Pages);
+                var numbers = new Dictionary<Guid, int>();
+                for (int n = 0; n < ordered.Count; n++) numbers[ordered[n].Id] = n + 1;
+                for (_active = first; _active <= last; _active++) DrawEditablePage(dc, s, numbers, _drag != DragKind.None && _active == keep);
             }
-            dc.DrawRectangle(null, PageEdge, new Rect(ox - 0.5, oy - 0.5, v.PageW + 1, v.PageH + 1));
-            DrawPage(dc, pageRect);
+            finally
+            {
+                _active = keep;
+                FlushRequests(s.Renderer);
+            }
+        }
 
+        /// <summary>Edge and bitmap of the <see cref="_active"/> page.</summary>
+        private void DrawPageFrame(DrawingContext dc)
+        {
+            var (ox, oy, k) = Origin();
+            var (vw, vh) = Host!.View.PageSizePt(_active);
+            var pageRect = new Rect(ox, oy, vw * k, vh * k);
+            dc.DrawRectangle(null, PageEdge, new Rect(ox - 0.5, oy - 0.5, pageRect.Width + 1, pageRect.Height + 1));
+            DrawPage(dc, pageRect);
+        }
+
+        /// <param name="dragPage">The drag in progress is on this page: draw its preview.</param>
+        private void DrawEditablePage(DrawingContext dc, DocumentSession s, Dictionary<Guid, int> numbers, bool dragPage)
+        {
+            var v = Host!.View;
+            DrawPageFrame(dc);
+            var (ox, oy, k) = Origin();
             int page = BasePage;
             var onPage = s.Items.Items.Where(i => i.PageIndex == page).ToList();
             dc.PushTransform(new MatrixTransform(k, 0, 0, k, ox, oy));
@@ -240,7 +310,7 @@ namespace Kuronuri.App
             var shapes = new List<Shape>();
             foreach (var item in onPage)
             {
-                bool moving = _drag == DragKind.Move && s.IsSelected(item.Id);
+                bool moving = dragPage && _drag == DragKind.Move && s.IsSelected(item.Id);
                 RedactionItem shown = moving ? ShapeOps.Translate(item, _moveDx, _moveDy) : item;
                 if (_drag == DragKind.Resize && _resizeItem != null && item.Id == _resizeItem.Id) shown = item with { Shapes = new Shape[] { _resizeRect! } };
                 shapes.AddRange(shown.Shapes);
@@ -254,13 +324,10 @@ namespace Kuronuri.App
             dc.Pop();
 
             // Selection, highlight, labels.
-            var ordered = Kuronuri.Core.Geometry.CoordMap.InDisplayOrder(s.Items.Items, s.Layout, s.Pages);
             var badges = new List<(string Text, BoxD Box, bool Warn)>();
-            var numbers = new Dictionary<Guid, int>();
-            for (int n = 0; n < ordered.Count; n++) numbers[ordered[n].Id] = n + 1;
             foreach (var item in onPage)
             {
-                var shown = _drag == DragKind.Move && s.IsSelected(item.Id) ? ShapeOps.Translate(item, _moveDx, _moveDy) : item;
+                var shown = dragPage && _drag == DragKind.Move && s.IsSelected(item.Id) ? ShapeOps.Translate(item, _moveDx, _moveDy) : item;
                 var bb = ShapeOps.Box(shown);
                 if (s.IsSelected(item.Id))
                 {
@@ -280,10 +347,18 @@ namespace Kuronuri.App
             }
 
             // Search hit being looked at (highlight only; it is not a redaction).
-            foreach (var r in Host.SearchHighlight)
+            foreach (var r in Host.SearchHighlightFor(page))
                 dc.DrawRectangle(SearchFill, new Pen(SearchBorder, 2 / k), new Rect(r.X, r.Y, r.W, r.H).Inflated(1 / k));
 
-            // Tool previews.
+            if (dragPage) DrawPreviews(dc, k);   // the drag in progress
+            dc.Pop();   // base -> view
+            foreach (var b in badges) DrawBadge(dc, b.Text, b.Box.L, b.Box.T, k, b.Warn);   // upright, in view coordinates
+            dc.Pop();   // scale / offset
+        }
+
+        /// <summary>Preview of the tool drag in progress, in base coordinates of the drag page.</summary>
+        private void DrawPreviews(DrawingContext dc, double k)
+        {
             if (_drag == DragKind.Marquee)
             {
                 var m = MarqueeBox();
@@ -299,12 +374,9 @@ namespace Kuronuri.App
             }
             if (_drag == DragKind.Stroke && _stroke.Count > 0)
             {
-                var pen = new Pen(PreviewFill, Host.BrushPt) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
+                var pen = new Pen(PreviewFill, Host!.BrushPt) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
                 dc.DrawGeometry(null, pen, ReviewPaginator.StrokeGeometry(new StrokeShape(_stroke, Host.BrushPt)));
             }
-            dc.Pop();   // base -> view
-            foreach (var b in badges) DrawBadge(dc, b.Text, b.Box.L, b.Box.T, k, b.Warn);   // upright, in view coordinates
-            dc.Pop();   // scale / offset
         }
 
         private static void DrawShapes(DrawingContext dc, IEnumerable<Shape> shapes, RedactionStyle style, Brush brush, double k)
@@ -401,6 +473,7 @@ namespace Kuronuri.App
             }
             if (!Editable) return;
             Focus();   // keyboard (arrows, Delete, Ctrl+A) goes to the page, not to a list that had focus
+            _active = PageUnder(pos);   // the page this click / drag works on
             var v = Host!.View;
             var p = ToPage(pos);
             double tol = 3 / v.DipPerPt;
@@ -540,6 +613,7 @@ namespace Kuronuri.App
                     break;
                 }
                 default:
+                    _active = PageUnder(pos);
                     UpdateCursor(s, pos);
                     return;
             }

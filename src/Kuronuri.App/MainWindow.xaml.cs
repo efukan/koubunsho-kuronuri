@@ -59,7 +59,7 @@ namespace Kuronuri.App
             }, Dispatcher);
             _highlightTimer.Stop();
 
-            _view.Changed += (s, e) => { leftCanvas.InvalidateVisual(); rightCanvas.InvalidateVisual(); UpdateScrollBars(); UpdateStatus(); };
+            _view.Changed += (s, e) => { leftCanvas.InvalidateVisual(); rightCanvas.InvalidateVisual(); UpdateScrollBars(); UpdatePinnedPages(); UpdateStatus(); };
             _view.PageChanged += (s, e) => OnPageChanged();
             rightCanvas.SizeChanged += (s, e) => _view.SetViewport(rightCanvas.ActualWidth, rightCanvas.ActualHeight);
 
@@ -102,16 +102,8 @@ namespace Kuronuri.App
                 return;
             }
             double step = -e.Delta / 120.0 * 60;
-            if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) { _view.ScrollBy(step, 0); return; }
-            if (step > 0 && _view.ScrollY >= _view.MaxScrollY - 0.5)
-            {
-                if (_view.PageIndex < _view.PageCount - 1) _view.GoToPage(_view.PageIndex + 1);
-            }
-            else if (step < 0 && _view.ScrollY <= 0.5)
-            {
-                if (_view.PageIndex > 0) _view.GoToPage(_view.PageIndex - 1, toBottom: true);
-            }
-            else _view.ScrollBy(0, step);
+            if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) _view.ScrollBy(step, 0);
+            else _view.ScrollBy(0, step);   // pages are one continuous column: no jump at the page edge (ARCHITECTURE §6)
         }
 
         // ================================================================== settings / combos
@@ -339,6 +331,7 @@ namespace Kuronuri.App
             _session = null;
             if (old != null) { old.Items.Changed -= Items_Changed; old.SelectionChanged -= Selection_Changed; old.Undo.StateChanged -= Undo_StateChanged; old.Dispose(); }
             _pageCache.Clear(); _thumbCache.Clear();
+            _pinned = (-1, -1);
 
             s.Renderer = new PageRenderService(_worker, s.Doc, _pageCache, _thumbCache);
             _session = s;
@@ -397,7 +390,6 @@ namespace Kuronuri.App
             if (s == null) return;
             s.Grouper.Close();
             int p = _view.PageIndex;   // view position; the cache and the text are keyed by original page numbers
-            _pageCache.SetPinnedPages(new[] { p - 1, p, p + 1 }.Where(v => v >= 0 && v < s.Pages.Count).Select(s.BaseOf));
             if (_tool == Tool.Text) PreloadText(s.BaseOf(p));
             UpdateExcludedBanner();
             if (thumbList.SelectedIndex != p)
@@ -415,6 +407,19 @@ namespace Kuronuri.App
         }
 
         private CancellationTokenSource? _prefetchCts;
+        private (int First, int Last) _pinned = (-1, -1);
+
+        /// <summary>The cache keeps the visible pages and one page before and after them (ARCHITECTURE §6).</summary>
+        private void UpdatePinnedPages()
+        {
+            var s = _session;
+            if (s == null) return;
+            var (first, last) = _view.VisiblePages();
+            first = Math.Max(0, first - 1); last = Math.Min(s.Pages.Count - 1, last + 1);
+            if (_pinned == (first, last)) return;
+            _pinned = (first, last);
+            _pageCache.SetPinnedPages(Enumerable.Range(first, Math.Max(0, last - first + 1)).Select(s.BaseOf));
+        }
 
         /// <param name="view">View position of the neighbouring page.</param>
         private void Prefetch(int view, CancellationToken token)
@@ -488,7 +493,6 @@ namespace Kuronuri.App
         {
             var s = _session;
             if (s == null) return;
-            _view.GoToPage(s.ViewOf(item.PageIndex));
             CenterOnBase(item.PageIndex, ShapeOps.Box(item));
             _highlight = item.Id;
             _highlightTimer.Stop(); _highlightTimer.Start();
@@ -578,12 +582,12 @@ namespace Kuronuri.App
             s.Select(items.Select(i => i.Id));
             s.PruneSelection();
             var first = items.OrderBy(i => s.ViewOf(i.PageIndex)).FirstOrDefault();
-            if (first != null && s.ViewOf(first.PageIndex) != _view.PageIndex) _view.GoToPage(s.ViewOf(first.PageIndex));
+            if (first != null && !_view.IsVisible(s.ViewOf(first.PageIndex))) _view.GoToPage(s.ViewOf(first.PageIndex));
             else if (first == null)
             {
                 // Removal undone by redo of an add, etc.: show the page of what disappeared.
                 var gone = (undo ? cmd.ItemsAfter : cmd.ItemsBefore).FirstOrDefault();
-                if (gone != null && s.ViewOf(gone.PageIndex) != _view.PageIndex) _view.GoToPage(s.ViewOf(gone.PageIndex));
+                if (gone != null && !_view.IsVisible(s.ViewOf(gone.PageIndex))) _view.GoToPage(s.ViewOf(gone.PageIndex));
             }
         }
 

@@ -54,7 +54,7 @@ namespace Kuronuri.App
             return t;
         }
 
-        public IReadOnlyList<RectShape> SearchHighlight => _session != null && _searchHighlightPage == CurrentBase ? _searchHighlight : new RectShape[0];   // base page / coordinates
+        public IReadOnlyList<RectShape> SearchHighlightFor(int basePage) => _session != null && _searchHighlightPage == basePage ? _searchHighlight : new RectShape[0];   // base coordinates
 
         private void PreloadText(int page)
         {
@@ -146,12 +146,15 @@ namespace Kuronuri.App
 
         // ================================================================== nudge
 
-        /// <returns>false when nothing on the current page is selected.</returns>
+        /// <returns>false when nothing is selected.</returns>
         private bool Nudge(double dx, double dy)
         {
             var s = _session;
             if (s == null) return false;
-            int b = CurrentBase;
+            // The page of the selection (it need not be the current page: several pages are visible, ARCHITECTURE §6).
+            var any = s.SelectedItems.FirstOrDefault();
+            if (any == null) return false;
+            int b = s.SelectedItems.Any(i => i.PageIndex == CurrentBase) ? CurrentBase : any.PageIndex;
             var pg = s.Pages[b];
             // Arrow keys move in screen directions: turn the view delta into a base delta (ARCHITECTURE §2.4).
             var o = Kuronuri.Core.Geometry.CoordMap.FromView(s.Layout.RotationOf(b), pg.Width, pg.Height, new Point2(0, 0));
@@ -476,7 +479,6 @@ namespace Kuronuri.App
             if (searchList.SelectedItem is not SearchHitVM row) return;
             _searchHighlight = row.Hit.Rects;
             _searchHighlightPage = row.Hit.Page;
-            _view.GoToPage(_session!.ViewOf(row.Hit.Page));
             var b = ShapeOps.Box(new RedactionItem(Guid.Empty, row.Hit.Page, row.Hit.Rects.Cast<Shape>().ToList(), null));
             CenterOnBase(row.Hit.Page, b);
             rightCanvas.InvalidateVisual();
