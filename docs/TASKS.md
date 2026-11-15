@@ -156,7 +156,7 @@
 
 - [x] タグ（`v*`）で配布 ZIP を GitHub Actions でビルドし、下書きリリースに載せる（`.github/workflows/release.yml`。タグと版の一致を確認）。
 - [x] README に「コード署名の方針」（ビルド元・署名対象・役割）、プライバシー、削除の方法を記載。
-- [ ] GitHub と SignPath の二要素認証を有効にする（利用者が行う）。
-- [ ] v0.9.1 のタグを push し、GitHub Actions でビルドしたリリースを公開する。
+- [ ] GitHub と SignPath の二要素認証を有効にする（利用者が行う。GitHub は有効化済み、SignPath はアカウント作成時）。
+- [x] v0.9.1 のタグを push し、GitHub Actions でビルドしたリリースを公開する（2026-11-15。ZIP の SHA-256 一致・起動を確認）。
 - [ ] SignPath Foundation に申請する（https://signpath.org/apply.html）。
 - [ ] 承認後: release.yml に SignPath の署名ステップを追加（`Kuronuri.exe`・`Kuronuri.Core.dll` のみ）。README の方針に「Free code signing provided by SignPath.io, certificate by SignPath Foundation」を記載。
