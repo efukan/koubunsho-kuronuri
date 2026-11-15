@@ -1,5 +1,5 @@
 # テキストはリポジトリ内部で LF に統一する（各自の core.autocrlf 設定に依存させない）
-* text=auto
+* text=auto eol=lf
 
 # バイナリは一切変換しない。PDF は ASCII が多くテキストと誤判定され得るため明示する
 *.pdf binary
