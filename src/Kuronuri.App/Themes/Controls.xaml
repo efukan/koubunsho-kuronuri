@@ -119,6 +119,13 @@
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="Label" Value=""><Setter TargetName="label" Property="Visibility" Value="Collapsed" /></Trigger>
+            <MultiTrigger>
+              <MultiTrigger.Conditions>
+                <Condition Property="t:IconButton.Compact" Value="True" />
+                <Condition Property="KeepLabel" Value="False" />
+              </MultiTrigger.Conditions>
+              <Setter TargetName="label" Property="Visibility" Value="Collapsed" />
+            </MultiTrigger>
             <Trigger Property="IsDropDown" Value="True"><Setter TargetName="chevron" Property="Visibility" Value="Visible" /></Trigger>
             <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bd" Property="Background" Value="{DynamicResource Bg.Subtle.Hover}" /></Trigger>
             <Trigger Property="IsPressed" Value="True"><Setter TargetName="bd" Property="Background" Value="{DynamicResource Bg.Subtle.Pressed}" /></Trigger>

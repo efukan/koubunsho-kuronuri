@@ -81,12 +81,26 @@ namespace Kuronuri.App
 
         private double DpiScale => VisualTreeHelper.GetDpi(this).DpiScaleX;
 
+        /// <summary>
+        /// The original pane shows what the editing pane shows (whose size is the view's viewport). When the splitter made it
+        /// smaller, the same area is drawn scaled down by this factor; the editing pane is always 1.
+        /// </summary>
+        private double PaneScale()
+        {
+            if (Editable) return 1;
+            var v = Host!.View;
+            if (v.ViewportW <= 0 || v.ViewportH <= 0 || ActualWidth <= 0 || ActualHeight <= 0) return 1;
+            return Math.Min(1, Math.Min(ActualWidth / v.ViewportW, ActualHeight / v.ViewportH));
+        }
+
+        /// <summary>Origin and scale in the pane's drawing coordinates (before <see cref="PaneScale"/> is applied).</summary>
         private (double Ox, double Oy, double K) Origin()
         {
             var v = Host!.View;
-            double k = v.DipPerPt;
-            double ox = v.PageW < ActualWidth ? (ActualWidth - v.PageW) / 2 : -v.ScrollX;
-            double oy = v.PageH < ActualHeight ? (ActualHeight - v.PageH) / 2 : -v.ScrollY;
+            double k = v.DipPerPt, f = PaneScale();
+            // Placement in the editing pane, then centred in this pane (which may differ in size: the original pane).
+            double ox = (v.PageW < v.ViewportW ? (v.ViewportW - v.PageW) / 2 : -v.ScrollX) + (ActualWidth / f - v.ViewportW) / 2;
+            double oy = (v.PageH < v.ViewportH ? (v.ViewportH - v.PageH) / 2 : -v.ScrollY) + (ActualHeight / f - v.ViewportH) / 2;
             double s = DpiScale;
             return (Math.Round(ox * s) / s, Math.Round(oy * s) / s, k);
         }
@@ -102,7 +116,8 @@ namespace Kuronuri.App
         public Point2 ToPage(Point p)
         {
             var (ox, oy, k) = Origin();
-            var view = new Point2((p.X - ox) / k, (p.Y - oy) / k);
+            double f = PaneScale();
+            var view = new Point2((p.X / f - ox) / k, (p.Y / f - oy) / k);
             return Kuronuri.Core.Geometry.CoordMap.FromView(Rot, BaseW, BaseH, view);
         }
 
@@ -173,7 +188,8 @@ namespace Kuronuri.App
             if (baseBmp != null) dc.DrawImage(baseBmp, pageRect);
 
             double scale = DpiScale;
-            var vis = Rect.Intersect(new Rect(0, 0, ActualWidth, ActualHeight), pageRect);
+            double ps = PaneScale();
+            var vis = Rect.Intersect(new Rect(0, 0, ActualWidth / ps, ActualHeight / ps), pageRect);
             if (vis.IsEmpty) return;
             const int grid = 256;
             int x0 = (int)Math.Floor((vis.X - pageRect.X) * scale) - grid, y0 = (int)Math.Floor((vis.Y - pageRect.Y) * scale) - grid;
@@ -202,9 +218,17 @@ namespace Kuronuri.App
             var v = Host!.View;
             var (ox, oy, k) = Origin();
             var pageRect = new Rect(ox, oy, v.PageW, v.PageH);
+            if (!Editable)
+            {
+                double f = PaneScale();
+                if (f < 1) dc.PushTransform(new ScaleTransform(f, f));
+                dc.DrawRectangle(null, PageEdge, new Rect(ox - 0.5, oy - 0.5, v.PageW + 1, v.PageH + 1));
+                DrawPage(dc, pageRect);
+                if (f < 1) dc.Pop();
+                return;
+            }
             dc.DrawRectangle(null, PageEdge, new Rect(ox - 0.5, oy - 0.5, v.PageW + 1, v.PageH + 1));
             DrawPage(dc, pageRect);
-            if (!Editable) return;
 
             int page = BasePage;
             var onPage = s.Items.Items.Where(i => i.PageIndex == page).ToList();

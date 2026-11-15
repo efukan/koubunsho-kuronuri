@@ -49,9 +49,6 @@ namespace Kuronuri.App
         {
             _worker = worker; _settings = settings; _settingsPath = settingsPath;
             InitializeComponent();
-            var wa = SystemParameters.WorkArea;
-            Width = Math.Min(Width, wa.Width * 0.95);
-            Height = Math.Min(Height, wa.Height * 0.95);
             leftCanvas.Host = this;
             rightCanvas.Host = this;
             rightCanvas.Editable = true;
@@ -203,15 +200,17 @@ namespace Kuronuri.App
 
         private void Panes_Checked(object sender, RoutedEventArgs e)
         {
-            if (leftHost == null) return;
-            bool two = twoPane.IsChecked == true;
-            colLeft.Width = two ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-            colGap.Width = two ? new GridLength(4) : new GridLength(0);
-            leftHost.Visibility = two ? Visibility.Visible : Visibility.Collapsed;
+            UpdatePanes();
         }
 
         private void TogglePanes_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            if (twoPane.IsChecked == true && _autoOnePane)
+            {
+                Notify(InfoSeverity.Info, "ウィンドウの幅が足りないため、原本と並べて表示できません",
+                    "ウィンドウを広げるか、ページ一覧・箇所リストを狭く（または「表示」から非表示に）すると、原本と並べて表示します。");
+                return;
+            }
             twoPane.IsChecked = !twoPane.IsChecked;
         }
 
@@ -220,17 +219,13 @@ namespace Kuronuri.App
             if (thumbList == null) return;
             bool t = showThumbs.IsChecked == true, l = showList.IsChecked == true;
             thumbList.Visibility = split1.Visibility = t ? Visibility.Visible : Visibility.Collapsed;
-            if (t && colThumbs.Width.Value < 1) colThumbs.Width = new GridLength(_lastThumbsWidth);
-            if (!t && colThumbs.ActualWidth > 1) _lastThumbsWidth = colThumbs.ActualWidth;
-            if (!t) colThumbs.Width = new GridLength(0);
-            colThumbs.MinWidth = t ? 100 : 0;
+            colThumbs.MinWidth = t ? MinThumbsWidth : 0;
             colSplit1.Width = t ? new GridLength(4) : new GridLength(0);
             sidePanel.Visibility = split2.Visibility = l ? Visibility.Visible : Visibility.Collapsed;
-            if (l && colList.Width.Value < 1) colList.Width = new GridLength(_lastListWidth);
-            if (!l && colList.ActualWidth > 1) _lastListWidth = colList.ActualWidth;
-            if (!l) colList.Width = new GridLength(0);
-            colList.MinWidth = l ? 200 : 0;
+            colList.MinWidth = l ? MinListWidth : 0;
             colSplit2.Width = l ? new GridLength(4) : new GridLength(0);
+            ApplySideWidths();   // the chosen widths (_lastThumbsWidth / _lastListWidth), narrowed while the window is small
+            QueueUpdatePanes();
         }
 
         // ================================================================== keyboard

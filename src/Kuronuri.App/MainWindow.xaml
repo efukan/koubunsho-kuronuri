@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:t="clr-namespace:Kuronuri.App.Themes"
         xmlns:local="clr-namespace:Kuronuri.App"
-        Title="公文書くろぬり" Width="1400" Height="900" MinWidth="900" MinHeight="600"
+        Title="公文書くろぬり" Width="1400" Height="900" MinWidth="760" MinHeight="500"
         FontFamily="{StaticResource UiFont}" FontSize="13" Background="{DynamicResource Bg.Window}" Foreground="{DynamicResource Text.Primary}"
         WindowStartupLocation="CenterScreen" UseLayoutRounding="True"
         AllowDrop="True" DragOver="Window_DragOver" Drop="Window_Drop">
@@ -67,8 +67,8 @@
   </Window.InputBindings>
 
   <DockPanel>
-    <!-- Command bar (ARCHITECTURE §11.1 / §11.7). Groups wrap onto a second row on narrow windows. -->
-    <Border DockPanel.Dock="Top" Background="{DynamicResource Bg.Bar}" BorderBrush="{DynamicResource Stroke.Divider}" BorderThickness="0,0,0,1" Padding="8,5">
+    <!-- Command bar (ARCHITECTURE §11.1 / §11.7). When narrow, labels are hidden first (Compact); groups then wrap onto a second row. -->
+    <Border x:Name="commandBarHost" DockPanel.Dock="Top" Background="{DynamicResource Bg.Bar}" BorderBrush="{DynamicResource Stroke.Divider}" BorderThickness="0,0,0,1" Padding="8,5" SizeChanged="CommandBarHost_SizeChanged">
       <WrapPanel x:Name="commandBar" VerticalAlignment="Center">
         <StackPanel Orientation="Horizontal" Margin="0,2">
           <t:IconButton Icon="&#xE8E5;" Label="開く" Command="local:Cmd.Open" ToolTip="開く (Ctrl+O): 原本のPDF、または作業途中の確認用PDFを開きます" />
@@ -80,7 +80,7 @@
               </ContextMenu>
             </t:IconButton.ContextMenu>
           </t:IconButton>
-          <t:IconButton Icon="&#xE896;" Label="開示用PDFを作成" Command="local:Cmd.Export" ToolTip="開示用PDFを作成 (Ctrl+E): 黒塗りを画像に焼き込んだ、外部に交付するPDFを作ります" />
+          <t:IconButton Icon="&#xE896;" Label="開示用PDFを作成" KeepLabel="True" Command="local:Cmd.Export" ToolTip="開示用PDFを作成 (Ctrl+E): 黒塗りを画像に焼き込んだ、外部に交付するPDFを作ります" />
           <t:IconButton Icon="&#xE749;" Label="印刷" IsDropDown="True" ToolTip="印刷">
             <t:IconButton.ContextMenu>
               <ContextMenu>
@@ -199,18 +199,18 @@
       <Separator />
       <StatusBarItem><TextBlock x:Name="stUnset" Text="理由未設定 0" /></StatusBarItem>
       <Separator />
-      <StatusBarItem><TextBlock x:Name="stState" Text="ファイルが開かれていません" /></StatusBarItem>
+      <StatusBarItem><TextBlock x:Name="stState" Text="ファイルが開かれていません" TextTrimming="CharacterEllipsis" /></StatusBarItem>
       <Separator />
-      <StatusBarItem><TextBlock x:Name="stHint" /></StatusBarItem>
+      <StatusBarItem><TextBlock x:Name="stHint" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" /></StatusBarItem>
     </StatusBar>
 
     <Grid x:Name="mainGrid">
       <Grid.ColumnDefinitions>
         <ColumnDefinition x:Name="colThumbs" Width="160" MinWidth="100" />
         <ColumnDefinition x:Name="colSplit1" Width="4" />
-        <ColumnDefinition x:Name="colLeft" Width="*" />
+        <ColumnDefinition x:Name="colLeft" Width="*" MinWidth="200" />
         <ColumnDefinition x:Name="colGap" Width="4" />
-        <ColumnDefinition x:Name="colRight" Width="*" />
+        <ColumnDefinition x:Name="colRight" Width="*" MinWidth="200" />
         <ColumnDefinition x:Name="colSplit2" Width="4" />
         <ColumnDefinition x:Name="colList" Width="320" MinWidth="200" />
       </Grid.ColumnDefinitions>
@@ -239,7 +239,8 @@
         <ListBox.ItemTemplate>
           <DataTemplate DataType="{x:Type local:ThumbVM}">
             <StackPanel Margin="4">
-              <Grid HorizontalAlignment="Center">
+              <Viewbox StretchDirection="DownOnly" HorizontalAlignment="Center"><!-- shrinks when the page list is narrower than the card -->
+              <Grid>
                 <Border x:Name="pageCard" BorderBrush="{DynamicResource Stroke.Card}" BorderThickness="1" Background="White">
                   <Grid>
                     <Image Source="{Binding Image}" Width="120" Height="{Binding HeightDip}" Stretch="Fill" />
@@ -255,6 +256,7 @@
                   <TextBlock Text="{Binding Count}" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
               </Grid>
+              </Viewbox>
               <TextBlock Text="{Binding Label}" HorizontalAlignment="Center" Margin="0,2,0,0" />
             </StackPanel>
             <DataTemplate.Triggers>
@@ -272,30 +274,37 @@
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>
-      <GridSplitter x:Name="split1" Grid.Column="1" Width="4" HorizontalAlignment="Stretch" />
+      <GridSplitter x:Name="split1" Grid.Column="1" Width="4" HorizontalAlignment="Stretch" DragCompleted="SideSplitter_DragCompleted" />
 
       <Grid Grid.Column="2" x:Name="leftHost">
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-        <Border Grid.ColumnSpan="2" Padding="10,4"><TextBlock Text="原本（閲覧のみ）" Foreground="{DynamicResource Text.Secondary}" FontSize="12" /></Border>
+        <Border Grid.ColumnSpan="2" Padding="10,4"><TextBlock Text="原本（閲覧のみ）" Foreground="{DynamicResource Text.Secondary}" FontSize="12" TextTrimming="CharacterEllipsis" /></Border>
         <local:PageCanvas x:Name="leftCanvas" Grid.Row="1" />
         <ScrollBar x:Name="leftV" Grid.Row="1" Grid.Column="1" Orientation="Vertical" Scroll="ScrollBar_Scroll" />
         <ScrollBar x:Name="leftH" Grid.Row="2" Orientation="Horizontal" Scroll="ScrollBar_Scroll" />
       </Grid>
-      <Border Grid.Column="3" />
+      <GridSplitter x:Name="splitPanes" Grid.Column="3" Width="4" HorizontalAlignment="Stretch" DragCompleted="SplitPanes_DragCompleted" MouseDoubleClick="SplitPanes_DoubleClick"
+                    ToolTip="ドラッグで原本とプレビューの幅を変更（ダブルクリックで半分ずつに戻す）" />
       <Grid Grid.Column="4" x:Name="rightHost">
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-        <Border Grid.ColumnSpan="2" Padding="10,4"><TextBlock Foreground="{DynamicResource Text.Secondary}" FontSize="12"><Run Text="黒塗りプレビュー（編集）" Foreground="{DynamicResource Text.Primary}" FontWeight="SemiBold" /><Run Text="   Space 押下中は透過" /></TextBlock></Border>
+        <Border Grid.ColumnSpan="2" Padding="10,4">
+          <DockPanel>
+            <TextBlock x:Name="autoPaneNote" DockPanel.Dock="Right" Margin="8,0,0,0" FontSize="12" Foreground="{DynamicResource Text.Secondary}" Visibility="Collapsed"
+                       Text="幅が狭いため原本を隠しています" ToolTip="ウィンドウを広げるか、ページ一覧・箇所リストを狭く（または非表示に）すると、原本と並べて表示します" />
+            <TextBlock Foreground="{DynamicResource Text.Secondary}" FontSize="12" TextTrimming="CharacterEllipsis"><Run Text="黒塗りプレビュー（編集）" Foreground="{DynamicResource Text.Primary}" FontWeight="SemiBold" /><Run Text="   Space 押下中は透過" /></TextBlock>
+          </DockPanel>
+        </Border>
         <local:PageCanvas x:Name="rightCanvas" Grid.Row="1" />
-        <Border x:Name="excludedBanner" Grid.Row="1" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,8,0,0" Padding="12,5" CornerRadius="6"
+        <Border x:Name="excludedBanner" Grid.Row="1" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="8,8,8,0" Padding="12,5" CornerRadius="6"
                 Background="#E6C42B1C" Visibility="Collapsed" IsHitTestVisible="False">
-          <TextBlock Foreground="White" FontWeight="SemiBold" Text="このページは開示用PDFに含めません（確認用PDFには残ります）" />
+          <TextBlock Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" Text="このページは開示用PDFに含めません（確認用PDFには残ります）" />
         </Border>
         <ScrollBar x:Name="rightV" Grid.Row="1" Grid.Column="1" Orientation="Vertical" Scroll="ScrollBar_Scroll" />
         <ScrollBar x:Name="rightH" Grid.Row="2" Orientation="Horizontal" Scroll="ScrollBar_Scroll" />
       </Grid>
-      <GridSplitter x:Name="split2" Grid.Column="5" Width="4" HorizontalAlignment="Stretch" />
+      <GridSplitter x:Name="split2" Grid.Column="5" Width="4" HorizontalAlignment="Stretch" DragCompleted="SideSplitter_DragCompleted" />
 
       <TabControl Grid.Column="6" x:Name="sidePanel" BorderThickness="0" Padding="0">
         <TabItem Header="箇所リスト" x:Name="listTab">
@@ -321,7 +330,7 @@
             </Border>
             <ListView x:Name="itemList" SelectionMode="Extended" SelectionChanged="ItemList_SelectionChanged"
                       PreviewMouseLeftButtonUp="ItemList_PreviewMouseLeftButtonUp" ContextMenuOpening="ItemList_ContextMenuOpening"
-                      BorderThickness="0" VirtualizingPanel.IsVirtualizing="True">
+                      BorderThickness="0" VirtualizingPanel.IsVirtualizing="True" SizeChanged="ItemList_SizeChanged">
               <ListView.ContextMenu>
                 <ContextMenu />
               </ListView.ContextMenu>
@@ -338,9 +347,9 @@
               </ListView.ItemContainerStyle>
               <ListView.View>
                 <GridView>
-                  <GridViewColumn Header="番号" Width="44" DisplayMemberBinding="{Binding Number}" />
-                  <GridViewColumn Header="頁" Width="40" DisplayMemberBinding="{Binding Page}" />
-                  <GridViewColumn Header="理由" Width="160" DisplayMemberBinding="{Binding ReasonText}" />
+                  <GridViewColumn Header="番号" Width="40" DisplayMemberBinding="{Binding Number}" />
+                  <GridViewColumn Header="頁" Width="36" DisplayMemberBinding="{Binding Page}" />
+                  <GridViewColumn x:Name="reasonColumn" Header="理由" Width="160" DisplayMemberBinding="{Binding ReasonText}" />
                   <GridViewColumn Header="種別" Width="64">
                     <GridViewColumn.CellTemplate>
                       <DataTemplate>
@@ -380,7 +389,7 @@
               <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{DynamicResource Text.Secondary}" FontSize="11"
                          Text="文字情報のない部分（スキャン画像・図の中の文字など）は検索できません。黒塗り漏れがないか、必ず目視でも確認してください。" />
             </StackPanel>
-            <ListView x:Name="searchList" SelectionMode="Single" SelectionChanged="SearchList_SelectionChanged" BorderThickness="1" BorderBrush="{DynamicResource Stroke.Control}">
+            <ListView x:Name="searchList" SelectionMode="Single" SelectionChanged="SearchList_SelectionChanged" SizeChanged="SearchList_SizeChanged" BorderThickness="1" BorderBrush="{DynamicResource Stroke.Control}">
               <ListView.View>
                 <GridView>
                   <GridViewColumn Width="30">
@@ -389,7 +398,7 @@
                     </GridViewColumn.CellTemplate>
                   </GridViewColumn>
                   <GridViewColumn Header="頁" Width="36" DisplayMemberBinding="{Binding Page}" />
-                  <GridViewColumn Header="内容" Width="190" DisplayMemberBinding="{Binding Preview}" />
+                  <GridViewColumn x:Name="previewColumn" Header="内容" Width="190" DisplayMemberBinding="{Binding Preview}" />
                   <GridViewColumn Header="" Width="30" DisplayMemberBinding="{Binding State}" />
                 </GridView>
               </ListView.View>

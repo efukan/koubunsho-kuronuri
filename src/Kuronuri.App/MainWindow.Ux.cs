@@ -39,6 +39,7 @@ namespace Kuronuri.App
             presetCombo.SelectedIndex = 0;
             stHint.Text = ToolHint(_tool);
             ApplyWindowLayout();
+            InitLayout();
             UpdateScrollBars();
         }
 
@@ -506,6 +507,7 @@ namespace Kuronuri.App
             }
             if (w.Maximized) WindowState = WindowState.Maximized;
             _lastThumbsWidth = w.ThumbsWidth; _lastListWidth = w.ListWidth;
+            _paneRatio = w.SafePaneRatio;
             colThumbs.Width = new GridLength(w.ThumbsWidth);
             colList.Width = new GridLength(w.ListWidth);
             showThumbs.IsChecked = w.ShowThumbs;
@@ -518,15 +520,17 @@ namespace Kuronuri.App
         {
             var b = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
             if (b.IsEmpty) return;
+            if (_shownTwoPanes == true) RememberPaneRatio();
             _settings.Window = new WindowLayout
             {
                 Left = b.Left, Top = b.Top, Width = b.Width, Height = b.Height,
                 Maximized = WindowState == WindowState.Maximized,
-                ThumbsWidth = showThumbs.IsChecked == true ? colThumbs.ActualWidth : _lastThumbsWidth,
-                ListWidth = showList.IsChecked == true ? colList.ActualWidth : _lastListWidth,
+                ThumbsWidth = _lastThumbsWidth,   // the chosen widths, not the ones narrowed for a small window
+                ListWidth = _lastListWidth,
                 ShowThumbs = showThumbs.IsChecked == true,
                 ShowList = showList.IsChecked == true,
                 TwoPane = twoPane.IsChecked == true,
+                PaneRatio = _paneRatio,
             };
             if (!_settings.Window.IsUsable()) { _settings.Window = null; return; }
             SettingsStore.TrySave(_settingsPath, _settings);   // silently ignored when the folder is not writable

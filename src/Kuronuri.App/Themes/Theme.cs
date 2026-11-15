@@ -67,6 +67,16 @@ namespace Kuronuri.App.Themes
         public static readonly DependencyProperty LabelProperty = DependencyProperty.Register(nameof(Label), typeof(string), typeof(IconButton), new PropertyMetadata(""));
         public static readonly DependencyProperty IsDropDownProperty = DependencyProperty.Register(nameof(IsDropDown), typeof(bool), typeof(IconButton), new PropertyMetadata(false));
 
+        /// <summary>Set on the command bar when it is too narrow: labels are hidden (icon only, the tooltip still names the button). Inherited.</summary>
+        public static readonly DependencyProperty CompactProperty = DependencyProperty.RegisterAttached("Compact", typeof(bool), typeof(IconButton),
+            new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.Inherits));
+        /// <summary>Keeps the label even in compact mode (the main action).</summary>
+        public static readonly DependencyProperty KeepLabelProperty = DependencyProperty.Register(nameof(KeepLabel), typeof(bool), typeof(IconButton), new PropertyMetadata(false));
+
+        public static bool GetCompact(DependencyObject d) => (bool)d.GetValue(CompactProperty);
+        public static void SetCompact(DependencyObject d, bool v) => d.SetValue(CompactProperty, v);
+        public bool KeepLabel { get => (bool)GetValue(KeepLabelProperty); set => SetValue(KeepLabelProperty, value); }
+
 
         public string Icon { get => (string)GetValue(IconProperty); set => SetValue(IconProperty, value); }
         public string Label { get => (string)GetValue(LabelProperty); set => SetValue(LabelProperty, value); }

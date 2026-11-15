@@ -161,10 +161,15 @@ namespace Kuronuri.Core.Settings
         [DataMember(Name = "showThumbs", Order = 7)] public bool ShowThumbs = true;
         [DataMember(Name = "showList", Order = 8)] public bool ShowList = true;
         [DataMember(Name = "twoPane", Order = 9)] public bool TwoPane = true;
+        /// <summary>Share of the original (left) pane in two-pane mode, 0.2–0.8.</summary>
+        [DataMember(Name = "paneRatio", Order = 10)] public double PaneRatio = 0.5;
 
         public bool IsUsable() =>
             Finite(Left) && Finite(Top) && Width >= 400 && Height >= 300 && Width <= 20000 && Height <= 20000 &&
             ThumbsWidth >= 60 && ThumbsWidth <= 1000 && ListWidth >= 120 && ListWidth <= 2000;
+
+        /// <summary>The pane ratio, or 0.5 when it is missing (older settings.json) or out of range.</summary>
+        public double SafePaneRatio => PaneRatio >= 0.2 && PaneRatio <= 0.8 ? PaneRatio : 0.5;
 
         private static bool Finite(double v) => !double.IsNaN(v) && !double.IsInfinity(v) && Math.Abs(v) < 100000;
 
