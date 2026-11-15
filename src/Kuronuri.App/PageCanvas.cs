@@ -28,6 +28,9 @@ namespace Kuronuri.App
         double BrushPt { get; }
         Reason? CurrentReason { get; }
         Guid? HighlightId { get; }
+
+        /// <summary>The original pane keeps the editing pane's zoom instead of shrinking to show the same area (ARCHITECTURE §11.10).</summary>
+        bool OriginalSameZoom { get; }
         void Execute(EditCommand cmd);
         void HandleWheel(PageCanvas source, MouseWheelEventArgs e);
 
@@ -86,11 +89,12 @@ namespace Kuronuri.App
 
         /// <summary>
         /// The original pane shows what the editing pane shows (whose size is the view's viewport). When the splitter made it
-        /// smaller, the same area is drawn scaled down by this factor; the editing pane is always 1.
+        /// smaller, the same area is drawn scaled down by this factor; the editing pane is always 1. With
+        /// <see cref="IEditorHost.OriginalSameZoom"/> it stays 1 too and the pane shows the middle of that area.
         /// </summary>
         private double PaneScale()
         {
-            if (Editable) return 1;
+            if (Editable || Host!.OriginalSameZoom) return 1;
             var v = Host!.View;
             if (v.ViewportW <= 0 || v.ViewportH <= 0 || ActualWidth <= 0 || ActualHeight <= 0) return 1;
             return Math.Min(1, Math.Min(ActualWidth / v.ViewportW, ActualHeight / v.ViewportH));

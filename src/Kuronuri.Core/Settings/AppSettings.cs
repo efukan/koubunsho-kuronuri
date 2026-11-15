@@ -168,6 +168,8 @@ namespace Kuronuri.Core.Settings
         /// settings.json without it (older versions) gives the default, continuous scrolling.
         /// </summary>
         [DataMember(Name = "singlePage", Order = 11)] public bool SinglePage;
+        /// <summary>The original pane keeps the editing pane's zoom instead of shrinking to the same area (ARCHITECTURE §11.10).</summary>
+        [DataMember(Name = "originalSameZoom", Order = 12)] public bool OriginalSameZoom;
 
         public bool IsUsable() =>
             Finite(Left) && Finite(Top) && Width >= 400 && Height >= 300 && Width <= 20000 && Height <= 20000 &&

@@ -517,6 +517,7 @@ namespace Kuronuri.App
             showList.IsChecked = w.ShowList;
             twoPane.IsChecked = w.TwoPane;
             continuousPages.IsChecked = !w.SinglePage;
+            originalSameZoom.IsChecked = w.OriginalSameZoom;
             Panels_Changed(this, new RoutedEventArgs());
         }
 
@@ -536,6 +537,7 @@ namespace Kuronuri.App
                 TwoPane = twoPane.IsChecked == true,
                 PaneRatio = _paneRatio,
                 SinglePage = continuousPages.IsChecked != true,
+                OriginalSameZoom = originalSameZoom.IsChecked == true,
             };
             if (!_settings.Window.IsUsable()) { _settings.Window = null; return; }
             SettingsStore.TrySave(_settingsPath, _settings);   // silently ignored when the folder is not writable

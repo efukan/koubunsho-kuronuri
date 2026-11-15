@@ -149,6 +149,8 @@
             <t:IconButton.ContextMenu>
               <ContextMenu>
                 <MenuItem x:Name="twoPane" Header="2画面で表示（原本と並べる）" IsCheckable="True" IsChecked="True" Checked="Panes_Checked" Unchecked="Panes_Checked" InputGestureText="F6" />
+                <MenuItem x:Name="originalSameZoom" Header="原本を同じ倍率で表示" IsCheckable="True" Checked="OriginalSameZoom_Changed" Unchecked="OriginalSameZoom_Changed"
+                          ToolTip="オン: 原本側が狭くても縮小せず、プレビューと同じ文字の大きさで中央の部分を表示します。オフ: プレビューと同じ範囲を縮小して表示します" />
                 <MenuItem x:Name="showThumbs" Header="ページ一覧" IsCheckable="True" IsChecked="True" Checked="Panels_Changed" Unchecked="Panels_Changed" />
                 <MenuItem x:Name="showList" Header="箇所リスト・検索" IsCheckable="True" IsChecked="True" Checked="Panels_Changed" Unchecked="Panels_Changed" />
                 <MenuItem x:Name="continuousPages" Header="ページを続けて表示" IsCheckable="True" IsChecked="True" Checked="Continuous_Changed" Unchecked="Continuous_Changed"

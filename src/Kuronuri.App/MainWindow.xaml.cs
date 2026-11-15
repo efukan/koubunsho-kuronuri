@@ -82,6 +82,7 @@ namespace Kuronuri.App
         public double BrushPt => _brushPt;
         public Reason? CurrentReason => _currentReason;
         public Guid? HighlightId => _highlight;
+        public bool OriginalSameZoom => originalSameZoom.IsChecked == true;
 
         public void Execute(EditCommand cmd)
         {
@@ -197,6 +198,8 @@ namespace Kuronuri.App
             rightCanvas.InvalidateVisual();
             UpdateStatus();
         }
+
+        private void OriginalSameZoom_Changed(object sender, RoutedEventArgs e) => leftCanvas?.InvalidateVisual();
 
         private void Continuous_Changed(object sender, RoutedEventArgs e)
         {
