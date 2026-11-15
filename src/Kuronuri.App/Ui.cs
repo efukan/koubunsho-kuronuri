@@ -18,11 +18,11 @@ namespace Kuronuri.App
             new RoutedUICommand(text, name, typeof(Cmd), new InputGestureCollection(g));
 
         public static readonly RoutedUICommand Open = C("開く", "Open", new KeyGesture(Key.O, ModifierKeys.Control));
-        public static readonly RoutedUICommand SaveReview = C("確認用として保存", "SaveReview", new KeyGesture(Key.S, ModifierKeys.Control));
-        public static readonly RoutedUICommand SaveAs = C("名前を付けて保存", "SaveAs", new KeyGesture(Key.S, ModifierKeys.Control | ModifierKeys.Shift));
-        public static readonly RoutedUICommand Export = C("確定出力", "Export", new KeyGesture(Key.E, ModifierKeys.Control));
-        public static readonly RoutedUICommand PrintRedacted = C("黒塗り済みを印刷", "PrintRedacted", new KeyGesture(Key.P, ModifierKeys.Control));
-        public static readonly RoutedUICommand PrintReview = C("確認用を印刷", "PrintReview");
+        public static readonly RoutedUICommand SaveReview = C("確認用PDFに保存", "SaveReview", new KeyGesture(Key.S, ModifierKeys.Control));
+        public static readonly RoutedUICommand SaveAs = C("名前を付けて確認用PDFに保存", "SaveAs", new KeyGesture(Key.S, ModifierKeys.Control | ModifierKeys.Shift));
+        public static readonly RoutedUICommand Export = C("開示用PDFを作成", "Export", new KeyGesture(Key.E, ModifierKeys.Control));
+        public static readonly RoutedUICommand PrintRedacted = C("黒塗りした状態で印刷", "PrintRedacted", new KeyGesture(Key.P, ModifierKeys.Control));
+        public static readonly RoutedUICommand PrintReview = C("確認用として印刷", "PrintReview");
         public static readonly RoutedUICommand Undo = C("元に戻す", "Undo", new KeyGesture(Key.Z, ModifierKeys.Control));
         public static readonly RoutedUICommand Redo = C("やり直し", "Redo", new KeyGesture(Key.Y, ModifierKeys.Control));
         public static readonly RoutedUICommand Merge = C("結合", "Merge", new KeyGesture(Key.G, ModifierKeys.Control));
@@ -38,6 +38,7 @@ namespace Kuronuri.App
         public static readonly RoutedUICommand NextUnset = C("次の未設定", "NextUnset", new KeyGesture(Key.F8));
         public static readonly RoutedUICommand PrevUnset = C("前の未設定", "PrevUnset", new KeyGesture(Key.F8, ModifierKeys.Shift));
         public static readonly RoutedUICommand Find = C("検索", "Find", new KeyGesture(Key.F, ModifierKeys.Control));
+        public static readonly RoutedUICommand Help = C("使い方", "Help", new KeyGesture(Key.F1));
     }
 
     /// <summary>One search result row.</summary>

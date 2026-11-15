@@ -30,4 +30,11 @@
   <SolidColorBrush x:Key="Accent.Pressed" Color="#52A7CF" />
   <SolidColorBrush x:Key="Accent.Subtle" Color="#2260CDFF" />
   <SolidColorBrush x:Key="Accent.Text" Color="#60CDFF" />
+
+  <SolidColorBrush x:Key="InfoBar.Success.Bg" Color="#393D1B" />
+  <SolidColorBrush x:Key="InfoBar.Success.Icon" Color="#6CCB5F" />
+  <SolidColorBrush x:Key="InfoBar.Info.Bg" Color="#2B2B2B" />
+  <SolidColorBrush x:Key="InfoBar.Info.Icon" Color="#60CDFF" />
+  <SolidColorBrush x:Key="InfoBar.Warning.Bg" Color="#433519" />
+  <SolidColorBrush x:Key="InfoBar.Warning.Icon" Color="#FCE100" />
 </ResourceDictionary>

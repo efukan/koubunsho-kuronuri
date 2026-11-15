@@ -29,6 +29,7 @@
     <CommandBinding Command="local:Cmd.NextUnset" Executed="NextUnset_Executed" CanExecute="HasDoc_CanExecute" />
     <CommandBinding Command="local:Cmd.PrevUnset" Executed="PrevUnset_Executed" CanExecute="HasDoc_CanExecute" />
     <CommandBinding Command="local:Cmd.Find" Executed="Find_Executed" CanExecute="HasDoc_CanExecute" />
+    <CommandBinding Command="local:Cmd.Help" Executed="Help_Executed" />
   </Window.CommandBindings>
   <Window.InputBindings>
     <KeyBinding Command="local:Cmd.Open" Gesture="Ctrl+O" />
@@ -54,6 +55,7 @@
     <KeyBinding Command="local:Cmd.NextUnset" Gesture="F8" />
     <KeyBinding Command="local:Cmd.PrevUnset" Gesture="Shift+F8" />
     <KeyBinding Command="local:Cmd.Find" Gesture="Ctrl+F" />
+    <KeyBinding Command="local:Cmd.Help" Gesture="F1" />
   </Window.InputBindings>
 
   <DockPanel>
@@ -61,21 +63,21 @@
     <Border DockPanel.Dock="Top" Background="{DynamicResource Bg.Bar}" BorderBrush="{DynamicResource Stroke.Divider}" BorderThickness="0,0,0,1" Padding="8,5">
       <WrapPanel x:Name="commandBar" VerticalAlignment="Center">
         <StackPanel Orientation="Horizontal" Margin="0,2">
-          <t:IconButton Icon="&#xE8E5;" Label="開く" Command="local:Cmd.Open" ToolTip="開く (Ctrl+O)" />
-          <t:IconButton Icon="&#xE74E;" Label="保存" IsDropDown="True" ToolTip="確認用PDFとして保存">
+          <t:IconButton Icon="&#xE8E5;" Label="開く" Command="local:Cmd.Open" ToolTip="開く (Ctrl+O): 原本のPDF、または作業途中の確認用PDFを開きます" />
+          <t:IconButton Icon="&#xE74E;" Label="保存" IsDropDown="True" ToolTip="作業内容を確認用PDFに保存します（原本は書き換えません）">
             <t:IconButton.ContextMenu>
               <ContextMenu>
-                <MenuItem Header="確認用として保存" Command="local:Cmd.SaveReview" InputGestureText="Ctrl+S" />
-                <MenuItem Header="名前を付けて保存" Command="local:Cmd.SaveAs" InputGestureText="Ctrl+Shift+S" />
+                <MenuItem Header="確認用PDFに保存" Command="local:Cmd.SaveReview" InputGestureText="Ctrl+S" />
+                <MenuItem Header="名前を付けて確認用PDFに保存…" Command="local:Cmd.SaveAs" InputGestureText="Ctrl+Shift+S" />
               </ContextMenu>
             </t:IconButton.ContextMenu>
           </t:IconButton>
-          <t:IconButton Icon="&#xE896;" Label="確定出力" Command="local:Cmd.Export" ToolTip="確定出力 (Ctrl+E): 全ページを画像化して黒塗りを焼き込んだ開示用PDFを書き出します" />
+          <t:IconButton Icon="&#xE896;" Label="開示用PDFを作成" Command="local:Cmd.Export" ToolTip="開示用PDFを作成 (Ctrl+E): 黒塗りを画像に焼き込んだ、外部に交付するPDFを作ります" />
           <t:IconButton Icon="&#xE749;" Label="印刷" IsDropDown="True" ToolTip="印刷">
             <t:IconButton.ContextMenu>
               <ContextMenu>
-                <MenuItem Header="黒塗り済みを印刷" Command="local:Cmd.PrintRedacted" InputGestureText="Ctrl+P" />
-                <MenuItem Header="確認用を印刷（原本の内容が見えます）" Command="local:Cmd.PrintReview" />
+                <MenuItem Header="黒塗りした状態で印刷" Command="local:Cmd.PrintRedacted" InputGestureText="Ctrl+P" />
+                <MenuItem Header="確認用として印刷（原本の内容が見えます）" Command="local:Cmd.PrintReview" />
               </ContextMenu>
             </t:IconButton.ContextMenu>
           </t:IconButton>
@@ -87,23 +89,23 @@
         </StackPanel>
         <Border Style="{StaticResource BarSeparator}" />
         <StackPanel Orientation="Horizontal" Margin="0,2">
-          <t:IconRadio x:Name="toolSelect" Icon="&#xE8B0;" GroupName="tool" IsChecked="True" Checked="Tool_Checked" Tag="Select" ToolTip="選択 (V)" />
-          <t:IconRadio x:Name="toolRect" Icon="&#xE739;" GroupName="tool" Checked="Tool_Checked" Tag="Rect" ToolTip="矩形 (R)" />
+          <t:IconRadio x:Name="toolSelect" Icon="&#xE8B0;" GroupName="tool" IsChecked="True" Checked="Tool_Checked" Tag="Select" ToolTip="選択 (V): 箇所をクリックで選び、ドラッグで移動・大きさ変更" />
+          <t:IconRadio x:Name="toolRect" Icon="&#xE739;" GroupName="tool" Checked="Tool_Checked" Tag="Rect" ToolTip="矩形 (R): ドラッグして四角く黒塗り" />
           <t:IconRadio x:Name="toolText" Icon="&#xE8D2;" GroupName="tool" Checked="Tool_Checked" Tag="Text" ToolTip="文字 (T): 文字の上をドラッグすると、その文字を行ごとに覆います" />
-          <t:IconRadio x:Name="toolFree" Icon="&#xE76D;" GroupName="tool" Checked="Tool_Checked" Tag="Freehand" ToolTip="フリーハンド (B)" />
-          <t:IconRadio x:Name="toolEraser" Icon="&#xE75C;" GroupName="tool" Checked="Tool_Checked" Tag="Eraser" ToolTip="消しゴム (E)" />
+          <t:IconRadio x:Name="toolFree" Icon="&#xE76D;" GroupName="tool" Checked="Tool_Checked" Tag="Freehand" ToolTip="手書き (B): なぞって黒塗り（近くの線は1つの箇所にまとまります）" />
+          <t:IconRadio x:Name="toolEraser" Icon="&#xE75C;" GroupName="tool" Checked="Tool_Checked" Tag="Eraser" ToolTip="消しゴム (E): クリックした黒塗りの図形を消す" />
           <ComboBox x:Name="brushCombo" Width="78" Margin="6,0,0,0" VerticalAlignment="Center" SelectionChanged="Brush_SelectionChanged" ToolTip="フリーハンドの太さ ( [ / ] )" />
         </StackPanel>
         <Border Style="{StaticResource BarSeparator}" />
         <StackPanel Orientation="Horizontal" Margin="0,2">
           <TextBlock Text="理由" VerticalAlignment="Center" Margin="2,0,8,0" Foreground="{DynamicResource Text.Secondary}" />
-          <ComboBox x:Name="currentReasonCombo" Width="150" VerticalAlignment="Center" SelectionChanged="CurrentReason_SelectionChanged" ToolTip="新しく作る箇所に付ける理由" />
+          <ComboBox x:Name="currentReasonCombo" Width="150" VerticalAlignment="Center" SelectionChanged="CurrentReason_SelectionChanged" ToolTip="これから作る黒塗り箇所に付ける理由（作った後でも変えられます）" />
         </StackPanel>
         <Border Style="{StaticResource BarSeparator}" />
         <StackPanel Orientation="Horizontal" Margin="0,2">
           <t:IconButton Icon="&#xE71B;" Command="local:Cmd.Merge" ToolTip="結合 (Ctrl+G): 同じページの複数の箇所を1つにまとめます" />
           <t:IconButton Icon="&#xE8C6;" Command="local:Cmd.Split" ToolTip="分割 (Ctrl+Shift+G): 1つの箇所を図形ごとに分けます" />
-          <t:IconButton Icon="&#xE74D;" Command="local:Cmd.Delete" ToolTip="削除 (Delete)" />
+          <t:IconButton Icon="&#xE74D;" Command="local:Cmd.Delete" ToolTip="削除 (Delete): 選んだ箇所を消す" />
           <t:IconButton Icon="&#xE7BA;" Label="次の未設定" Command="local:Cmd.NextUnset" ToolTip="理由が設定されていない箇所へ順に移動 (F8 / Shift+F8 で前へ)" />
           <t:IconButton Icon="&#xE721;" Label="検索" Command="local:Cmd.Find" ToolTip="語句や電話番号などを検索して、まとめて黒塗りにします (Ctrl+F)" />
         </StackPanel>
@@ -141,6 +143,7 @@
             </t:IconButton.ContextMenu>
           </t:IconButton>
           <t:IconButton Icon="&#xE713;" Command="local:Cmd.Settings" ToolTip="設定" />
+          <t:IconButton Icon="&#xE897;" Command="local:Cmd.Help" ToolTip="使い方 (F1)" />
         </StackPanel>
       </WrapPanel>
     </Border>
@@ -242,8 +245,6 @@
         <local:PageCanvas x:Name="rightCanvas" Grid.Row="1" />
         <ScrollBar x:Name="rightV" Grid.Row="1" Grid.Column="1" Orientation="Vertical" Scroll="ScrollBar_Scroll" />
         <ScrollBar x:Name="rightH" Grid.Row="2" Orientation="Horizontal" Scroll="ScrollBar_Scroll" />
-        <TextBlock x:Name="emptyHint" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource Text.Secondary}" FontSize="16" TextAlignment="Center"
-                   Text="「開く」(Ctrl+O) で PDF を開くか、&#x0a;PDF ファイルをここにドラッグしてください" />
       </Grid>
       <GridSplitter x:Name="split2" Grid.Column="5" Width="4" HorizontalAlignment="Stretch" />
 
@@ -347,6 +348,59 @@
           </DockPanel>
         </TabItem>
       </TabControl>
+
+      <!-- Start screen (ARCHITECTURE §11.8): shown while no document is open. -->
+      <Border x:Name="startScreen" Grid.ColumnSpan="7" Background="{DynamicResource Bg.Window}" Panel.ZIndex="5">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel MaxWidth="760" Margin="32" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock Text="公文書くろぬり" FontSize="28" FontWeight="SemiBold" />
+            <TextBlock Margin="0,8,0,24" FontSize="15" TextWrapping="Wrap" Foreground="{DynamicResource Text.Secondary}"
+                       Text="PDF の一部を黒塗りして、外部に交付できる「開示用PDF」を作ります。原本のPDFは書き換えません。" />
+            <UniformGrid Columns="3" Margin="0,0,0,24">
+              <Border Background="{DynamicResource Bg.Layer}" BorderBrush="{DynamicResource Stroke.Card}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,8,0">
+                <StackPanel>
+                  <TextBlock Text="1" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Accent.Text}" />
+                  <TextBlock Text="PDFを開く" FontSize="15" FontWeight="SemiBold" Margin="0,4,0,6" />
+                  <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Text.Secondary}" Text="黒塗りしたい原本、または作業途中の「確認用PDF」を開きます。" />
+                </StackPanel>
+              </Border>
+              <Border Background="{DynamicResource Bg.Layer}" BorderBrush="{DynamicResource Stroke.Card}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="4,0">
+                <StackPanel>
+                  <TextBlock Text="2" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Accent.Text}" />
+                  <TextBlock Text="黒塗りして理由を付ける" FontSize="15" FontWeight="SemiBold" Margin="0,4,0,6" />
+                  <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Text.Secondary}" Text="矩形・文字・手書きで黒塗りし、号番号を選びます。語句の検索でまとめて黒塗りもできます。" />
+                </StackPanel>
+              </Border>
+              <Border Background="{DynamicResource Bg.Layer}" BorderBrush="{DynamicResource Stroke.Card}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="8,0,0,0">
+                <StackPanel>
+                  <TextBlock Text="3" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Accent.Text}" />
+                  <TextBlock Text="開示用PDFを作成" FontSize="15" FontWeight="SemiBold" Margin="0,4,0,6" />
+                  <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Text.Secondary}" Text="黒塗りを画像に焼き込んだPDFを作り、下の文字が残っていないことを自動で検証します。" />
+                </StackPanel>
+              </Border>
+            </UniformGrid>
+            <StackPanel Orientation="Horizontal">
+              <Button Style="{StaticResource AccentButton}" Command="local:Cmd.Open" Padding="18,7">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="&#xE8E5;" FontFamily="{StaticResource IconFont}" FontSize="15" VerticalAlignment="Center" Margin="0,0,8,0" />
+                  <TextBlock Text="PDFを開く (Ctrl+O)" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Command="local:Cmd.Help" Margin="8,0,0,0" Padding="14,7">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="&#xE897;" FontFamily="{StaticResource IconFont}" FontSize="15" VerticalAlignment="Center" Margin="0,0,8,0" />
+                  <TextBlock Text="使い方 (F1)" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+            <TextBlock Margin="0,14,0,0" Foreground="{DynamicResource Text.Secondary}" TextWrapping="Wrap"
+                       Text="PDF ファイルをこの画面にドラッグしても開けます。作業の途中は「確認用PDF」として保存すると、後から続きを作業できます。" />
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+
+      <!-- In-window notifications (ARCHITECTURE §11.8). -->
+      <local:InfoBar x:Name="infoBar" Grid.Column="2" Grid.ColumnSpan="3" VerticalAlignment="Top" Margin="24,36,24,0" Panel.ZIndex="10" />
     </Grid>
   </DockPanel>
 </Window>

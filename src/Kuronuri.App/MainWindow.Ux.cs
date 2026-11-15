@@ -70,7 +70,7 @@ namespace Kuronuri.App
             Tool.Select => "選択: クリックで選択・ドラッグで移動。空き場所をドラッグで範囲選択。矢印キーで微調整",
             Tool.Rect => "矩形: ドラッグで黒塗りの矩形を作ります",
             Tool.Text => "文字: 文字の上をドラッグすると、その文字を行ごとに覆います",
-            Tool.Freehand => "フリーハンド: ドラッグで描きます。近くの線は1つの箇所にまとまります（Enter で区切り）",
+            Tool.Freehand => "手書き: なぞって黒塗りします。近くの線は1つの箇所にまとまります（Enter で区切り）",
             Tool.Eraser => "消しゴム: クリックした図形を消します",
             _ => "",
         };
@@ -82,6 +82,14 @@ namespace Kuronuri.App
             _hintTimer ??= new DispatcherTimer(TimeSpan.FromSeconds(4), DispatcherPriority.Normal, (s, e) => { _hintTimer!.Stop(); stHint.Text = ToolHint(_tool); }, Dispatcher);
             _hintTimer.Stop(); _hintTimer.Start();
         }
+
+        // ================================================================== notifications / help (ARCHITECTURE §11.8)
+
+        /// <summary>Completion and notices go to the in-window bar; errors and confirmations stay dialogs.</summary>
+        private void Notify(InfoSeverity severity, string title, string message = "", string? actionLabel = null, Action? action = null) =>
+            infoBar.Show(severity, title, message, actionLabel, action);
+
+        private void Help_Executed(object sender, ExecutedRoutedEventArgs e) => HelpWindow.ShowFor(this);
 
         // ================================================================== style dropdown
 
@@ -458,7 +466,7 @@ namespace Kuronuri.App
             Execute(new CompositeCommand(newItems.Select(i => (EditCommand)new AddItemCommand(i))));
             s.Select(newItems.Select(i => i.Id));
             _searchHighlight = new RectShape[0];
-            ShowHint(newItems.Count + " 箇所を黒塗りにしました（元に戻す: Ctrl+Z）");
+            Notify(InfoSeverity.Success, newItems.Count + " 箇所を黒塗りにしました", "理由は「" + (_currentReason == null ? "未設定" : ItemRow.Describe(_currentReason)) + "」で追加しました。", "元に戻す", () => Cmd.Undo.Execute(null, this));
         }
 
         // ================================================================== window layout (settings.json "window")

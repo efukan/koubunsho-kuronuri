@@ -21,6 +21,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Kuronuri.Core\Kuronuri.Core.csproj" />
+    <!-- The user guide is shown in the help window (ARCHITECTURE §11.8). -->
+    <EmbeddedResource Include="..\..\docs\USER_GUIDE.md" LogicalName="USER_GUIDE.md" Link="USER_GUIDE.md" />
     <Reference Include="System.Runtime.Serialization" />
     <Reference Include="ReachFramework" />
     <Reference Include="System.Printing" />

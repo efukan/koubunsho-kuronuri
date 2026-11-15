@@ -319,18 +319,19 @@ namespace Kuronuri.App
                 loaded = RunWithProgress("開いています…", null, token => _worker.Run(() => DocumentSession.Load(_worker, path, _settings.Style), token));
             }
             catch (PdfLoadException ex) { Error(PdfLoadException.Describe(ex.Kind)); return; }
-            catch (ReviewFileCorruptException) { Error("確認用PDFが破損しています（埋め込まれた原本が記録と一致しません）。開けませんでした。"); return; }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { Error("ファイルを開けませんでした。"); return; }
+            catch (ReviewFileCorruptException) { Error("確認用PDFを開けませんでした。中に埋め込まれた原本が保存時の記録と一致しません（ファイルが壊れているか、書き換えられています）。\n\n別の確認用PDF、または元の原本PDFを開いてください。"); return; }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { Error("ファイルを開けませんでした。別のアプリで開いていないか、読み取りできる場所にあるか確認してください。"); return; }
             if (loaded == null) return;
             SetSession(loaded);
 
             var w = loaded.Warnings;
             var notes = new List<string>();
-            if (w.Xfa) notes.Add("この PDF は XFA フォームを含んでいます。正しく表示できない可能性があります。");
+            if (w.Xfa) notes.Add("XFA フォームを含むため、内容が正しく表示されない可能性があります。画面と原本を見比べて確認してください。");
             if ((w.HasAttachments || w.HasBookmarks) && loaded.Kind == SourceKind.Original)
-                notes.Add("この PDF には" + (w.HasAttachments ? "添付ファイル" : "") + (w.HasAttachments && w.HasBookmarks ? "・" : "") + (w.HasBookmarks ? "しおり" : "") +
-                          "があります。確定出力（開示用PDF）には含まれません。");
-            if (notes.Count > 0) Info(string.Join("\n\n", notes));
+                notes.Add((w.HasAttachments ? "添付ファイル" : "") + (w.HasAttachments && w.HasBookmarks ? "・" : "") + (w.HasBookmarks ? "しおり" : "") +
+                          "は開示用PDFには含まれません（ページの内容だけが入ります）。");
+            if (notes.Count > 0) Notify(InfoSeverity.Warning, "この PDF についてのお知らせ", string.Join("\n", notes));
+            else if (loaded.Kind == SourceKind.Review) Notify(InfoSeverity.Info, "確認用PDFを開きました", "保存したときの黒塗り箇所と理由から続きを作業できます。");
         }
 
         private void SetSession(DocumentSession s)
@@ -356,7 +357,8 @@ namespace Kuronuri.App
             thumbList.ItemsSource = _thumbs;
             UpdateThumbBadges();
             ClearSearch();
-            emptyHint.Visibility = Visibility.Collapsed;
+            startScreen.Visibility = Visibility.Collapsed;
+            infoBar.Hide();
             _view.SetViewport(rightCanvas.ActualWidth, rightCanvas.ActualHeight);
             _view.Reset(s.Pages.Count, i => (s.Pages[i].Width, s.Pages[i].Height));
             RebuildList();
@@ -582,7 +584,7 @@ namespace Kuronuri.App
             var s = _session;
             if (s == null) return;
             var sel = s.SelectedItems.ToList();
-            if (!EditOps.CanMerge(sel)) { Info("結合できるのは、同じページにある2つ以上の箇所です。"); return; }
+            if (!EditOps.CanMerge(sel)) { Notify(InfoSeverity.Info, "結合できません", "結合できるのは、同じページにある2つ以上の箇所です。Shift か Ctrl を押しながらクリックして選んでください。"); return; }
             var cmd = EditOps.Merge(sel);
             Execute(cmd);
             s.Select(cmd.ItemsAfter.Select(i => i.Id));
@@ -637,10 +639,10 @@ namespace Kuronuri.App
             string? dest = saveAs || s.ReviewPath == null ? null : s.ReviewPath;   // an original is always "save as"
             if (dest == null)
             {
-                dest = FileDialogs.Save(this, "確認用PDFとして保存", s.Folder, ReviewFile.DefaultReviewName(s.DisplayFileName));
+                dest = FileDialogs.Save(this, "確認用PDFに保存", s.Folder, ReviewFile.DefaultReviewName(s.DisplayFileName));
                 if (dest == null) return false;
             }
-            if (!SavePathGuard.IsAllowed(dest, s.ProtectedFiles)) { Error("原本PDFと同じファイルには保存できません。別の名前を指定してください。"); return false; }
+            if (!SavePathGuard.IsAllowed(dest, s.ProtectedFiles)) { Error("原本のPDFには上書きできません（原本は書き換えない決まりです）。別の名前を指定してください。"); return false; }
             if (s.Original.Length > DocumentSession.LargeOriginalBytes &&
                 !Confirm("原本が 300MB を超えています。確認用PDFは原本を丸ごと含むため、サイズが約2倍になり、保存中に多くのメモリを使います。続けますか？"))
                 return false;
@@ -656,16 +658,19 @@ namespace Kuronuri.App
                     finally { if (!ReferenceEquals(original, s.OriginalBytes)) Array.Clear(original, 0, original.Length); }
                 }, token));
             }
-            catch (ForbiddenDestinationException) { Error("原本PDFと同じファイルには保存できません。"); return false; }
-            catch (OriginalChangedException) { Error("原本PDFが開いた後に変更されたため、保存できませんでした。"); return false; }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { Error("保存できませんでした（書き込めない場所か、ファイルが使用中です）。"); return false; }
-            catch (Exception ex) when (ex is InvalidOperationException || ex is PdfLoadException) { Error("確認用PDFを作成できませんでした。"); return false; }
+            catch (ForbiddenDestinationException) { Error("原本のPDFには上書きできません。別の名前を指定してください。"); return false; }
+            catch (OriginalChangedException) { Error("確認用PDFに保存できませんでした。開いた後に原本のPDFが変更・移動されています。\n\n原本を元に戻すか、開き直してから作業してください。"); return false; }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { Error("保存できませんでした。書き込みできない場所か、ファイルが別のアプリで開かれています。\n\n別の場所を選ぶか、ファイルを閉じてからやり直してください。"); return false; }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is PdfLoadException) { Error("確認用PDFを作成できませんでした。もう一度やり直してください。"); return false; }
 
             s.ReviewPath = dest;
             s.MarkSaved();
             UpdateStatus();
             if (res.Method == ReviewSaveMethod.Raster)
-                Info("この文書はページをそのまま取り込めなかったため、画像方式で確認用PDFを保存しました。\n（原本と箇所の情報は通常どおり保存されています。本文の検索はできません。）");
+                Notify(InfoSeverity.Warning, "確認用PDFを画像方式で保存しました: " + Path.GetFileName(dest),
+                    "この文書はページをそのまま取り込めなかったため、ページを画像にして保存しました。原本と黒塗り箇所は通常どおり保存されています（確認用PDFの中で文字の検索はできません）。");
+            else
+                Notify(InfoSeverity.Success, "確認用PDFに保存しました: " + Path.GetFileName(dest), "このファイルを開くと、続きから作業できます。外部には渡さないでください。");
             return true;
         }
 
@@ -678,11 +683,11 @@ namespace Kuronuri.App
             rightCanvas.CancelDrag();
             CommitFreeText();
             int unset = s.Items.Items.Count(i => i.Reason == null);
-            if (s.Items.Count == 0 && !Confirm("黒塗り箇所が1つもありません。このまま確定出力しますか？")) return;
-            if (unset > 0 && !Confirm("理由が設定されていない箇所が " + unset + " 件あります。このまま確定出力しますか？")) return;
-            string? dest = FileDialogs.Save(this, "確定出力（開示用PDF）", s.Folder, ReviewFile.DefaultFinalName(s.DisplayFileName));
+            if (s.Items.Count == 0 && !Confirm("黒塗り箇所が1つもありません。\nこのまま開示用PDFを作成しますか？（全ページがそのまま画像になります）")) return;
+            if (unset > 0 && !Confirm("理由が設定されていない箇所が " + unset + " 件あります。\nこのまま開示用PDFを作成しますか？\n\n（「キャンセル」して F8 キーで未設定の箇所を順に確認できます）")) return;
+            string? dest = FileDialogs.Save(this, "開示用PDFを作成", s.Folder, ReviewFile.DefaultFinalName(s.DisplayFileName));
             if (dest == null) return;
-            if (!SavePathGuard.IsAllowed(dest, s.ProtectedFilesForFinal)) { Error("原本PDF・開いている確認用PDFと同じファイルには出力できません。別の名前を指定してください。"); return; }
+            if (!SavePathGuard.IsAllowed(dest, s.ProtectedFilesForFinal)) { Error("原本のPDFや、開いている確認用PDFには上書きできません。別の名前を指定してください。"); return; }
 
             var items = s.Items.Items.ToList();
             var pages = s.Pages;
@@ -692,22 +697,27 @@ namespace Kuronuri.App
             var sw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                res = RunWithProgress("確定出力しています…", pages.Count, (token, progress) => _worker.Run(() =>
+                res = RunWithProgress("開示用PDFを作成しています…", pages.Count, (token, progress) => _worker.Run(() =>
                     FinalOutput.Write(s.Doc, pages, items, style, dest, s.ProtectedFilesForFinal, opt, (d, n) => progress.Report(d), token), token));
             }
-            catch (OperationCanceledException) { Info("確定出力を中止しました。出力ファイルは作成されていません。"); return; }
-            catch (OutputVerificationException) { Error("出力の検証に失敗したため、出力ファイルを削除しました。\n（黒塗りが正しく焼き込まれていない、または想定外のデータが含まれていました）"); return; }
-            catch (ForbiddenDestinationException) { Error("原本PDF・開いている確認用PDFと同じファイルには出力できません。"); return; }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { Error("出力できませんでした（書き込めない場所か、ファイルが使用中です）。"); return; }
-            catch (InvalidOperationException) { Error("確定出力中にエラーが発生しました。出力ファイルは作成されていません。"); return; }
+            catch (OperationCanceledException) { Notify(InfoSeverity.Info, "開示用PDFの作成を中止しました", "ファイルは作成されていません。"); return; }
+            catch (OutputVerificationException) { Error("開示用PDFの検証に合格しなかったため、作成したファイルを削除しました。\n（黒塗りが正しく焼き込まれていないか、想定外のデータが含まれていました）\n\nもう一度作成してください。同じ結果になる場合は原本のPDFを作り直してください。"); return; }
+            catch (ForbiddenDestinationException) { Error("原本のPDFや、開いている確認用PDFには上書きできません。別の名前を指定してください。"); return; }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { Error("開示用PDFを作成できませんでした。書き込みできない場所か、同じ名前のファイルが別のアプリで開かれています。\n\n別の場所を選ぶか、ファイルを閉じてからやり直してください。"); return; }
+            catch (InvalidOperationException) { Error("開示用PDFの作成中にエラーが発生しました。ファイルは作成されていません。もう一度やり直してください。"); return; }
             sw.Stop();
 
-            string msg = "確定出力が完了しました（検証済み）。\n\n" + pages.Count + " ページ、" + FormatBytes(res.FileBytes) + "、" + (sw.ElapsedMilliseconds / 1000.0).ToString("0.0") + " 秒";
+            string msg = pages.Count + " ページ・" + FormatBytes(res.FileBytes) + "・" + (sw.ElapsedMilliseconds / 1000.0).ToString("0.0") + " 秒。黒塗りが焼き込まれ、元の文字や情報が残っていないことを確認済みです。";
+            var severity = InfoSeverity.Success;
             if (res.ReducedPages.Count > 0)
-                msg += "\n\n次のページは大きすぎるため、解像度を自動で下げて出力しました: " +
-                       string.Join(", ", res.ReducedPages.Take(20).Select(i => (i + 1) + "（約" + Math.Round(res.Pages[i].EffectiveDpi) + "dpi）")) +
-                       (res.ReducedPages.Count > 20 ? " ほか" : "");
-            Info(msg);
+            {
+                severity = InfoSeverity.Warning;
+                msg += "\n大きすぎるページは解像度を下げて作成しました: " +
+                       string.Join(", ", res.ReducedPages.Take(10).Select(i => (i + 1) + "ページ（約" + Math.Round(res.Pages[i].EffectiveDpi) + "dpi）")) +
+                       (res.ReducedPages.Count > 10 ? " ほか" : "");
+            }
+            string created = dest;
+            Notify(severity, "開示用PDFを作成しました: " + Path.GetFileName(created), msg, "開いて確認", () => { if (ConfirmDiscard()) OpenPath(created); });
         }
 
         private static string FormatBytes(long b) => b >= 1 << 20 ? (b / 1048576.0).ToString("0.0") + " MB" : Math.Max(1, b / 1024) + " KB";
@@ -718,8 +728,8 @@ namespace Kuronuri.App
 
         private void PrintReview_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            if (!Confirm("「確認用を印刷」は原本の内容をそのまま印刷します（黒塗り箇所は半透明の赤で示すだけです）。\n" +
-                         "印刷データ（スプール）にも原本の内容が含まれます。庁内確認以外の目的で使わないでください。\n\n続けますか？", MessageBoxImage.Warning))
+            if (!Confirm("「確認用として印刷」は、原本の内容をそのまま印刷します（黒塗り箇所は半透明の赤で囲むだけで、下の文字は読めます）。\n" +
+                         "印刷データにも原本の内容が残ります。庁内での確認以外には使わないでください。\n\n印刷しますか？", MessageBoxImage.Warning))
                 return;
             Print(review: true);
         }
@@ -760,7 +770,7 @@ namespace Kuronuri.App
             _settings.Window = layout;
             if (_settings.Theme != Themes.ThemeManager.Current) Themes.ThemeManager.Apply(_settings.Theme);
             if (!SettingsStore.TrySave(_settingsPath, _settings))
-                Info("設定は今回の起動中だけ有効です（設定ファイルを書き込めない場所にあります）。");
+                Notify(InfoSeverity.Warning, "設定は今回だけ有効です", "設定ファイル（settings.json）を書き込めない場所にあるため、次回の起動では元に戻ります。");
             ApplySettingsToUi();
         }
 
@@ -772,7 +782,7 @@ namespace Kuronuri.App
             var s = _session;
             if (s == null || !s.IsModified) return true;
             CommitFreeText();
-            var r = MessageBox.Show(this, "変更が保存されていません。確認用PDFとして保存しますか？", AppTitle, MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            var r = MessageBox.Show(this, "変更が保存されていません。確認用PDFに保存しますか？\n\n「いいえ」を選ぶと、保存していない変更は失われます。", AppTitle, MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
             if (r == MessageBoxResult.Cancel) return false;
             if (r == MessageBoxResult.No) return true;
             return SaveReview(saveAs: false);
