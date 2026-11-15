@@ -1,5 +1,6 @@
-# Draws the application icon (a page whose text lines are partly blacked out) and writes
-# src/Kuronuri.App/kuronuri.ico with PNG-compressed images at the sizes Windows asks for.
+# Draws the application icon and writes src/Kuronuri.App/kuronuri.ico (PNG-compressed images, 16-256 px).
+# Design: a white page on a paper-grey tile; some words in the text lines are blacked out.
+# Flat (no gradients or shadows); the shapes are snapped to whole pixels of each size so small sizes stay crisp.
 # Usage (repository root):  pwsh tools/make-icon.ps1
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Drawing
@@ -7,58 +8,57 @@ $root = Split-Path -Parent $PSScriptRoot
 $out = Join-Path $root "src/Kuronuri.App/kuronuri.ico"
 $sizes = 16, 20, 24, 32, 40, 48, 64, 256
 
-function RoundRect([System.Drawing.Drawing2D.GraphicsPath]$p, [float]$x, [float]$y, [float]$w, [float]$h, [float]$r) {
-    $d = 2 * $r
-    $p.AddArc($x, $y, $d, $d, 180, 90); $p.AddArc($x + $w - $d, $y, $d, $d, 270, 90)
-    $p.AddArc($x + $w - $d, $y + $h - $d, $d, $d, 0, 90); $p.AddArc($x, $y + $h - $d, $d, $d, 90, 90); $p.CloseFigure()
+$Tile = "#E4E1DA"; $Paper = "#FFFFFF"; $Text = "#B4AFA6"; $Ink = "#121212"
+
+# Geometry is given on a 256 grid.
+$script:n = 256
+function P([double]$v) { [Math]::Round($v * $script:n / 256.0) }
+function RR([double]$x1, [double]$y1, [double]$x2, [double]$y2, [double]$r) {
+    $l = P $x1; $t = P $y1; $w = (P $x2) - $l; $h = (P $y2) - $t
+    $rr = [Math]::Max(0.0, [Math]::Min($r * $script:n / 256.0, [Math]::Min($w, $h) / 2.0))
+    $p = New-Object System.Drawing.Drawing2D.GraphicsPath
+    if ($rr -lt 0.5) { $p.AddRectangle([System.Drawing.RectangleF]::new($l, $t, $w, $h)); return , $p }
+    $d = 2 * $rr
+    $p.AddArc($l, $t, $d, $d, 180, 90); $p.AddArc($l + $w - $d, $t, $d, $d, 270, 90)
+    $p.AddArc($l + $w - $d, $t + $h - $d, $d, $d, 0, 90); $p.AddArc($l, $t + $h - $d, $d, $d, 90, 90); $p.CloseFigure()
+    return , $p
 }
+function Fill($g, [string]$hex, $path) { $g.FillPath((New-Object System.Drawing.SolidBrush ([System.Drawing.ColorTranslator]::FromHtml($hex))), $path) }
 
-function Draw([int]$n) {
-    $bmp = New-Object System.Drawing.Bitmap $n, $n, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+function Draw([int]$size) {
+    $script:n = $size
+    $bmp = New-Object System.Drawing.Bitmap $size, $size, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.SmoothingMode = "AntiAlias"; $g.PixelOffsetMode = "HighQuality"; $g.Clear([System.Drawing.Color]::Transparent)
-    $s = $n / 256.0
-    $g.ScaleTransform($s, $s)
-    $small = $n -le 24
-
-    # Page with a folded corner.
-    $page = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $page.AddLines([System.Drawing.PointF[]]@(
-        [System.Drawing.PointF]::new(40, 12), [System.Drawing.PointF]::new(170, 12), [System.Drawing.PointF]::new(216, 58),
-        [System.Drawing.PointF]::new(216, 244), [System.Drawing.PointF]::new(40, 244)))
-    $page.CloseFigure()
-    $edge = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(255, 70, 76, 86)), ($(if ($small) { 16 } else { 8 }))
-    $edge.LineJoin = "Round"
-    $g.FillPath([System.Drawing.Brushes]::White, $page)
-    $g.DrawPath($edge, $page)
-    $fold = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $fold.AddLines([System.Drawing.PointF[]]@([System.Drawing.PointF]::new(170, 12), [System.Drawing.PointF]::new(170, 58), [System.Drawing.PointF]::new(216, 58)))
-    $g.DrawPath($edge, $fold)
-
-    # Text lines (grey) and redactions (black). Small sizes keep only the bars so they stay readable.
-    $grey = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 160, 166, 176))
-    $black = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 17, 17, 17))
-    if (-not $small) {
-        foreach ($y in 92, 184) { $p = New-Object System.Drawing.Drawing2D.GraphicsPath; RoundRect $p 68 $y 120 14 7; $g.FillPath($grey, $p) }
-        $p = New-Object System.Drawing.Drawing2D.GraphicsPath; RoundRect $p 68 214 80 14 7; $g.FillPath($grey, $p)
+    $g.SmoothingMode = "AntiAlias"; $g.PixelOffsetMode = "Half"; $g.Clear([System.Drawing.Color]::Transparent)
+    Fill $g $Tile (RR 8 8 248 248 56)
+    Fill $g $Paper (RR 52 20 204 236 16)
+    if ($size -le 24) {
+        # Small sizes: a text line, a blacked-out line, a short text line.
+        Fill $g $Text (RR 76 64 180 92 6)
+        Fill $g $Ink (RR 76 120 180 164 4)
+        Fill $g $Text (RR 76 188 140 212 6)
+    } else {
+        Fill $g $Text (RR 76 50 180 64 7)
+        Fill $g $Text (RR 76 80 104 94 7);  Fill $g $Ink (RR 112 74 180 100 5)
+        Fill $g $Ink (RR 76 112 140 138 5); Fill $g $Text (RR 148 118 180 132 7)
+        Fill $g $Text (RR 76 150 180 164 7)
+        Fill $g $Text (RR 76 180 116 194 7); Fill $g $Ink (RR 124 174 168 200 5)
+        Fill $g $Text (RR 76 210 140 224 7)
     }
-    $bars = if ($small) { @(@(64, 78, 128, 44), @(64, 150, 128, 44)) } else { @(@(64, 118, 128, 32), @(64, 156, 96, 22)) }
-    foreach ($b in $bars) { $p = New-Object System.Drawing.Drawing2D.GraphicsPath; RoundRect $p $b[0] $b[1] $b[2] $b[3] 4; $g.FillPath($black, $p) }
-
     $g.Dispose()
     $ms = New-Object System.IO.MemoryStream
     $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
     return , $ms.ToArray()
 }
 
-$images = foreach ($n in $sizes) { , (Draw $n) }
+$images = foreach ($s in $sizes) { , (Draw $s) }
 $fs = [System.IO.File]::Create($out)
 $w = New-Object System.IO.BinaryWriter $fs
 $w.Write([UInt16]0); $w.Write([UInt16]1); $w.Write([UInt16]$sizes.Count)
 $offset = 6 + 16 * $sizes.Count
 for ($i = 0; $i -lt $sizes.Count; $i++) {
-    $n = $sizes[$i]; $len = $images[$i].Length
-    $w.Write([byte]($n % 256)); $w.Write([byte]($n % 256)); $w.Write([byte]0); $w.Write([byte]0)
+    $s = $sizes[$i]; $len = $images[$i].Length
+    $w.Write([byte]($s % 256)); $w.Write([byte]($s % 256)); $w.Write([byte]0); $w.Write([byte]0)
     $w.Write([UInt16]1); $w.Write([UInt16]32); $w.Write([UInt32]$len); $w.Write([UInt32]$offset)
     $offset += $len
 }
