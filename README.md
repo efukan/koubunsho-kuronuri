@@ -1,6 +1,6 @@
-# 公文書くろぬり（kuronuri）
+# 公文書くろぬり（koubunsho-kuronuri）
 
-[![CI](https://github.com/efukan/kuronuri/actions/workflows/ci.yml/badge.svg)](https://github.com/efukan/kuronuri/actions/workflows/ci.yml)
+[![CI](https://github.com/efukan/koubunsho-kuronuri/actions/workflows/ci.yml/badge.svg)](https://github.com/efukan/koubunsho-kuronuri/actions/workflows/ci.yml)
 
 **PDF の黒塗り（墨消し）専用の Windows デスクトップアプリです。** 情報公開請求への対応などで、PDF の一部を黒塗りして外部に交付できる「開示用PDF」を作ります。自治体の LGWAN 端末（インターネットに出られない・管理者権限がない・GPU のない低スペック機）でそのまま動くことを目標にしています。
 
@@ -28,7 +28,7 @@
 
 ## 導入
 
-1. [Releases](https://github.com/efukan/kuronuri/releases) から `kuronuri-<版>.zip` をダウンロードします。
+1. [Releases](https://github.com/efukan/koubunsho-kuronuri/releases) から `kuronuri-<版>.zip` をダウンロードします。
 2. リリースに記載の SHA-256 と一致することを確認します（PowerShell: `Get-FileHash .\kuronuri-0.9.0.zip`）。
 3. 任意のフォルダに展開し、`Kuronuri.exe` を起動します。
 
@@ -89,7 +89,7 @@ tools/                      検査・配布用 ZIP・アイコンのスクリプ
 
 ## 不具合・脆弱性の報告
 
-- 不具合や要望は [Issues](https://github.com/efukan/kuronuri/issues) へ。**実際の文書や、その内容が分かる画面は添付しないでください。**
+- 不具合や要望は [Issues](https://github.com/efukan/koubunsho-kuronuri/issues) へ。**実際の文書や、その内容が分かる画面は添付しないでください。**
 - 黒塗りの下の情報が読めてしまうなど、安全に関わる問題は公開の Issue ではなく、[SECURITY.md](SECURITY.md) の方法で非公開で報告してください。
 
 ## ライセンス

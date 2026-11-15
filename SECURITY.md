@@ -13,7 +13,7 @@
 
 ## 報告の方法
 
-GitHub の非公開の脆弱性報告を使ってください: <https://github.com/efukan/kuronuri/security/advisories/new>
+GitHub の非公開の脆弱性報告を使ってください: <https://github.com/efukan/koubunsho-kuronuri/security/advisories/new>
 
 - 再現の手順、使った版、Windows の版を書いてください。
 - 再現用の PDF が必要な場合は、**実際の文書ではなく、架空の内容で作った PDF** を添付してください。
@@ -27,4 +27,4 @@ GitHub の非公開の脆弱性報告を使ってください: <https://github.c
 
 ## Reporting a vulnerability (English)
 
-Kuronuri is a PDF redaction tool. If you find a way to recover redacted content from an exported PDF, a case where the output verification passes an unsafe file, or any leak of document content to disk or the network, please report it privately through GitHub's private vulnerability reporting: <https://github.com/efukan/kuronuri/security/advisories/new>. Please attach only synthetic test PDFs, never real documents. Only the latest release is supported.
+Kuronuri is a PDF redaction tool. If you find a way to recover redacted content from an exported PDF, a case where the output verification passes an unsafe file, or any leak of document content to disk or the network, please report it privately through GitHub's private vulnerability reporting: <https://github.com/efukan/koubunsho-kuronuri/security/advisories/new>. Please attach only synthetic test PDFs, never real documents. Only the latest release is supported.
