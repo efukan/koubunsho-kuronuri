@@ -1,7 +1,7 @@
 <Project>
   <!-- Version and file properties shared by every project (shown in the EXE's Properties > Details). -->
   <PropertyGroup>
-    <Version>0.9.1</Version>
+    <Version>0.9.2</Version>
     <Authors>efukan</Authors>
     <Company>efukan</Company>
     <Copyright>Copyright (c) 2026 efukan. MIT License.</Copyright>
