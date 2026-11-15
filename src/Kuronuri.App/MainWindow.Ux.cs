@@ -516,6 +516,7 @@ namespace Kuronuri.App
             showThumbs.IsChecked = w.ShowThumbs;
             showList.IsChecked = w.ShowList;
             twoPane.IsChecked = w.TwoPane;
+            continuousPages.IsChecked = !w.SinglePage;
             Panels_Changed(this, new RoutedEventArgs());
         }
 
@@ -534,6 +535,7 @@ namespace Kuronuri.App
                 ShowList = showList.IsChecked == true,
                 TwoPane = twoPane.IsChecked == true,
                 PaneRatio = _paneRatio,
+                SinglePage = continuousPages.IsChecked != true,
             };
             if (!_settings.Window.IsUsable()) { _settings.Window = null; return; }
             SettingsStore.TrySave(_settingsPath, _settings);   // silently ignored when the folder is not writable

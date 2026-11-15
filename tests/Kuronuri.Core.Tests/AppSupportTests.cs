@@ -219,7 +219,7 @@ namespace Kuronuri.Core.Tests
         {
             string dir = TestDir.Make("settings-window");
             string path = Path.Combine(dir, "settings.json");
-            var s = new AppSettings { Window = new WindowLayout { Left = 10, Top = 20, Width = 1200, Height = 800, Maximized = true, ThumbsWidth = 180, ListWidth = 300, ShowThumbs = false, TwoPane = false } };
+            var s = new AppSettings { Window = new WindowLayout { Left = 10, Top = 20, Width = 1200, Height = 800, Maximized = true, ThumbsWidth = 180, ListWidth = 300, ShowThumbs = false, TwoPane = false, SinglePage = true } };
             Assert.True(SettingsStore.TrySave(path, s));
             var back = SettingsStore.Load(path);
             Assert.NotNull(back.Window);
@@ -228,6 +228,11 @@ namespace Kuronuri.Core.Tests
             Assert.False(back.Window.ShowThumbs);
             Assert.False(back.Window.TwoPane);
             Assert.True(back.Window.ShowList);
+            Assert.True(back.Window.SinglePage);
+
+            // An older settings.json without "singlePage": continuous scrolling (the default).
+            File.WriteAllText(path, "{\"app\":\"kuronuri\",\"window\":{\"left\":0,\"top\":0,\"width\":1200,\"height\":800,\"thumbsWidth\":160,\"listWidth\":320}}");
+            Assert.False(SettingsStore.Load(path).Window!.SinglePage);
 
             File.WriteAllText(path, "{\"app\":\"kuronuri\",\"window\":{\"left\":0,\"top\":0,\"width\":50,\"height\":50}}");
             Assert.Null(SettingsStore.Load(path).Window);   // too small -> ignored

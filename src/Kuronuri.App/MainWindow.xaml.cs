@@ -102,8 +102,14 @@ namespace Kuronuri.App
                 return;
             }
             double step = -e.Delta / 120.0 * 60;
-            if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) _view.ScrollBy(step, 0);
-            else _view.ScrollBy(0, step);   // pages are one continuous column: no jump at the page edge (ARCHITECTURE §6)
+            if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) { _view.ScrollBy(step, 0); return; }
+            if (!_view.Continuous)
+            {
+                // One page at a time: scrolling on at the edge of the page moves to the next / previous page (ARCHITECTURE §6).
+                if (step > 0 && _view.ScrollY >= _view.MaxScrollY - 0.5) { if (_view.PageIndex < _view.PageCount - 1) _view.GoToPage(_view.PageIndex + 1); return; }
+                if (step < 0 && _view.ScrollY <= 0.5) { if (_view.PageIndex > 0) _view.GoToPage(_view.PageIndex - 1, toBottom: true); return; }
+            }
+            _view.ScrollBy(0, step);   // continuous: the column goes on across page edges
         }
 
         // ================================================================== settings / combos
@@ -190,6 +196,12 @@ namespace Kuronuri.App
             _session.Style = styleWhite.IsChecked == true ? RedactionStyle.WhiteWithBorder : RedactionStyle.Black;
             rightCanvas.InvalidateVisual();
             UpdateStatus();
+        }
+
+        private void Continuous_Changed(object sender, RoutedEventArgs e)
+        {
+            if (continuousPages == null) return;   // while the window is being built
+            _view.SetContinuous(continuousPages.IsChecked == true);
         }
 
         private void Panes_Checked(object sender, RoutedEventArgs e)

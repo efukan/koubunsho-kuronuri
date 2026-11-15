@@ -163,6 +163,11 @@ namespace Kuronuri.Core.Settings
         [DataMember(Name = "twoPane", Order = 9)] public bool TwoPane = true;
         /// <summary>Share of the original (left) pane in two-pane mode, 0.2–0.8.</summary>
         [DataMember(Name = "paneRatio", Order = 10)] public double PaneRatio = 0.5;
+        /// <summary>
+        /// One page at a time instead of continuous scrolling (ARCHITECTURE §6). Stored this way round so that a
+        /// settings.json without it (older versions) gives the default, continuous scrolling.
+        /// </summary>
+        [DataMember(Name = "singlePage", Order = 11)] public bool SinglePage;
 
         public bool IsUsable() =>
             Finite(Left) && Finite(Top) && Width >= 400 && Height >= 300 && Width <= 20000 && Height <= 20000 &&

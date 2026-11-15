@@ -151,6 +151,8 @@
                 <MenuItem x:Name="twoPane" Header="2画面で表示（原本と並べる）" IsCheckable="True" IsChecked="True" Checked="Panes_Checked" Unchecked="Panes_Checked" InputGestureText="F6" />
                 <MenuItem x:Name="showThumbs" Header="ページ一覧" IsCheckable="True" IsChecked="True" Checked="Panels_Changed" Unchecked="Panels_Changed" />
                 <MenuItem x:Name="showList" Header="箇所リスト・検索" IsCheckable="True" IsChecked="True" Checked="Panels_Changed" Unchecked="Panels_Changed" />
+                <MenuItem x:Name="continuousPages" Header="ページを続けて表示" IsCheckable="True" IsChecked="True" Checked="Continuous_Changed" Unchecked="Continuous_Changed"
+                          ToolTip="オン: ページを縦に続けて並べ、スクロールでそのまま次のページへ進みます。オフ: 1ページずつ表示し、ページの端でさらにスクロールすると次のページへ移ります" />
                 <Separator />
                 <MenuItem Header="拡大" Command="local:Cmd.ZoomIn" InputGestureText="Ctrl++" />
                 <MenuItem Header="縮小" Command="local:Cmd.ZoomOut" InputGestureText="Ctrl+-" />

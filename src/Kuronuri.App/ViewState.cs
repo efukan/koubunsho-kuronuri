@@ -12,6 +12,10 @@ namespace Kuronuri.App
     /// DIP before the first and after the last, each page centred horizontally. ScrollX/Y = top-left of the viewport
     /// inside that column, in DIP. <see cref="PageIndex"/> (the current page) follows the scroll position.
     /// </para>
+    /// <para>
+    /// When <see cref="Continuous"/> is off (one page at a time), the column holds only the current page: scrolling never
+    /// changes the page, and moving to another page re-applies the fit mode to it.
+    /// </para>
     /// </summary>
     public sealed class ViewState
     {
@@ -24,6 +28,7 @@ namespace Kuronuri.App
         private (double W, double H)[] _sizes = new (double, double)[0];   // view size of each page (pt)
         private double[] _tops = new double[1];                              // sum of the heights above each page (pt)
         private double _maxWidthPt;
+        private bool _continuous = true;
 
         public event EventHandler? Changed;
 
@@ -45,9 +50,16 @@ namespace Kuronuri.App
         public double PageWidthPt => PageCount > 0 ? _sizes[_pageIndex].W : 595;
         public double PageHeightPt => PageCount > 0 ? _sizes[_pageIndex].H : 842;
 
+        /// <summary>Pages are stacked in one column (otherwise only the current page is laid out).</summary>
+        public bool Continuous => _continuous;
+
+        // The pages laid out in the column.
+        private int First => _continuous ? 0 : _pageIndex;
+        private int Last => _continuous ? PageCount - 1 : _pageIndex;
+
         /// <summary>Size of the whole column of pages (DIP).</summary>
-        public double DocW => _maxWidthPt * DipPerPt;
-        public double DocH => PageCount == 0 ? 0 : 2 * Pad + _tops[PageCount] * DipPerPt + PageGap * (PageCount - 1);
+        public double DocW => (_continuous ? _maxWidthPt : PageWidthPt) * DipPerPt;
+        public double DocH => PageCount == 0 ? 0 : 2 * Pad + (_tops[Last + 1] - _tops[First]) * DipPerPt + PageGap * (Last - First);
 
         public double MaxScrollX => Math.Max(0, DocW - ViewportW);
         public double MaxScrollY => Math.Max(0, DocH - ViewportH);
@@ -60,7 +72,7 @@ namespace Kuronuri.App
         public (double W, double H) PageSizePt(int view) => _sizes[view];
 
         /// <summary>Top of a page inside the column (DIP).</summary>
-        private double Top(int view) => Pad + _tops[view] * DipPerPt + PageGap * view;
+        private double Top(int view) => Pad + (_tops[view] - _tops[First]) * DipPerPt + PageGap * (view - First);
 
         /// <summary>Top-left of a page in the viewport of the editing pane (DIP).</summary>
         public (double X, double Y) PageOrigin(int view)
@@ -76,14 +88,14 @@ namespace Kuronuri.App
         {
             if (PageCount == 0) return 0;
             double y = viewportY - (DocH < ViewportH ? (ViewportH - DocH) / 2 : -_scrollY);   // in the column
-            int lo = 0, hi = PageCount - 1;
+            int lo = First, hi = Last;
             while (lo < hi)   // last page whose top is above y
             {
                 int mid = (lo + hi + 1) / 2;
                 if (Top(mid) <= y) lo = mid; else hi = mid - 1;
             }
             double bottom = Top(lo) + _sizes[lo].H * DipPerPt;
-            if (y > bottom && lo < PageCount - 1 && y - bottom > PageGap / 2) lo++;
+            if (y > bottom && lo < Last && y - bottom > PageGap / 2) lo++;
             return lo;
         }
 
@@ -134,6 +146,13 @@ namespace Kuronuri.App
             Raise();
         }
 
+        /// <summary>Switches between continuous scrolling and one page at a time, keeping the current page where it is.</summary>
+        public void SetContinuous(bool continuous)
+        {
+            if (_continuous == continuous) return;
+            KeepCurrentPage(() => _continuous = continuous);
+        }
+
         public void SetViewport(double w, double h)
         {
             if (w <= 0 || h <= 0 || (Math.Abs(w - ViewportW) < 0.5 && Math.Abs(h - ViewportH) < 0.5)) return;
@@ -145,10 +164,13 @@ namespace Kuronuri.App
         {
             if (PageCount == 0) return;
             index = Math.Max(0, Math.Min(PageCount - 1, index));
+            bool changed = index != _pageIndex;
+            _pageIndex = index;                // first: one page at a time lays out only this page
+            if (!_continuous) ApplyFit();      // each page is fitted on its own there
             _scrollY = toBottom ? Top(index) + _sizes[index].H * DipPerPt + Pad - ViewportH : Top(index) - Pad;
             _scrollX = CenteredX(index);
             Clamp();
-            SetCurrent(index);
+            if (changed) PageChanged?.Invoke(this, EventArgs.Empty);
             Raise();
         }
 
@@ -168,10 +190,13 @@ namespace Kuronuri.App
         {
             if (PageCount == 0) return;
             view = Math.Max(0, Math.Min(PageCount - 1, view));
+            bool changed = view != _pageIndex;
+            _pageIndex = view;
+            if (changed && !_continuous) ApplyFit();
             _scrollX = (DocW - _sizes[view].W * DipPerPt) / 2 + xPt * DipPerPt - ViewportW / 2;
             _scrollY = Top(view) + yPt * DipPerPt - ViewportH / 2;
             Clamp();
-            SetCurrent(view);
+            if (changed) PageChanged?.Invoke(this, EventArgs.Empty);
             Raise();
         }
 
@@ -257,7 +282,7 @@ namespace Kuronuri.App
         /// </summary>
         private int PageFromScroll()
         {
-            if (PageCount == 0) return 0;
+            if (PageCount == 0 || !_continuous) return _pageIndex;
             var (first, last) = VisiblePages();
             if (MaxScrollY > 0.5 && _scrollY <= 0.5) return first;
             if (MaxScrollY > 0.5 && _scrollY >= MaxScrollY - 0.5) return last;
