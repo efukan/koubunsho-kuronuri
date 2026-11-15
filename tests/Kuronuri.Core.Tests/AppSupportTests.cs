@@ -215,6 +215,36 @@ namespace Kuronuri.Core.Tests
         }
 
         [Fact]
+        public void WindowLayoutRoundTripsAndInvalidValuesAreDropped()
+        {
+            string dir = TestDir.Make("settings-window");
+            string path = Path.Combine(dir, "settings.json");
+            var s = new AppSettings { Window = new WindowLayout { Left = 10, Top = 20, Width = 1200, Height = 800, Maximized = true, ThumbsWidth = 180, ListWidth = 300, ShowThumbs = false, TwoPane = false } };
+            Assert.True(SettingsStore.TrySave(path, s));
+            var back = SettingsStore.Load(path);
+            Assert.NotNull(back.Window);
+            Assert.Equal(1200, back.Window!.Width);
+            Assert.True(back.Window.Maximized);
+            Assert.False(back.Window.ShowThumbs);
+            Assert.False(back.Window.TwoPane);
+            Assert.True(back.Window.ShowList);
+
+            File.WriteAllText(path, "{\"app\":\"kuronuri\",\"window\":{\"left\":0,\"top\":0,\"width\":50,\"height\":50}}");
+            Assert.Null(SettingsStore.Load(path).Window);   // too small -> ignored
+            Assert.Null(new AppSettings().Window);           // default: no layout (shipped settings.json has none)
+        }
+
+        [Fact]
+        public void WindowLayoutVisibilityCheck()
+        {
+            var w = new WindowLayout { Left = 100, Top = 100, Width = 1000, Height = 700 };
+            Assert.True(w.MostlyInside(0, 0, 1920, 1080));
+            Assert.False(w.MostlyInside(1920, 0, 1920, 1080));   // on a monitor that is no longer there
+            var half = new WindowLayout { Left = 1500, Top = 100, Width = 1000, Height = 700 };
+            Assert.False(half.MostlyInside(0, 0, 1920, 1080));
+        }
+
+        [Fact]
         public void ShippedDefaultSettingsFileEqualsBuiltInDefaults()
         {
             string path = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "docs", "settings.default.json"));

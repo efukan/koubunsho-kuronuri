@@ -71,6 +71,9 @@ namespace Kuronuri.Core.Pdfium
         [DllImport(Dll)] public static extern void FPDFText_ClosePage(IntPtr textPage);
         [DllImport(Dll)] public static extern int FPDFText_CountChars(IntPtr textPage);
         [DllImport(Dll)] public static extern int FPDFText_GetText(IntPtr textPage, int startIndex, int count, [Out] byte[] result);
+        [DllImport(Dll)] public static extern uint FPDFText_GetUnicode(IntPtr textPage, int index);
+        [DllImport(Dll)] public static extern int FPDFText_IsGenerated(IntPtr textPage, int index);
+        [DllImport(Dll)] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool FPDFText_GetLooseCharBox(IntPtr textPage, int index, out FS_RECTF rect);
         [DllImport(Dll)] public static extern int FPDFPage_GetAnnotCount(IntPtr page);
 
         // ---- fpdf_edit.h

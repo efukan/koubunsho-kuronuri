@@ -22,6 +22,7 @@ namespace Kuronuri.Core.Settings
         [DataMember(Name = "defaultStyle", Order = 5)] public string DefaultStyle = "black";
         [DataMember(Name = "brushWidthsMm", Order = 6)] public List<double> BrushWidthsMm = new List<double> { 2, 4, 6, 10 };
         [DataMember(Name = "printDpi", Order = 7)] public int PrintDpi = 300;
+        [DataMember(Name = "window", Order = 8, EmitDefaultValue = false)] public WindowLayout? Window;
 
         public static readonly int[] ExportDpiChoices = { 150, 200, 300 };
         public static readonly int[] PrintDpiChoices = { 200, 300 };
@@ -49,6 +50,7 @@ namespace Kuronuri.Core.Settings
             BrushWidthsMm = (BrushWidthsMm ?? d.BrushWidthsMm).Where(w => w >= 0.5 && w <= 50).Distinct().OrderBy(w => w).ToList();
             if (BrushWidthsMm.Count == 0) BrushWidthsMm = d.BrushWidthsMm;
             if (!PrintDpiChoices.Contains(PrintDpi)) PrintDpi = d.PrintDpi;
+            if (Window != null && !Window.IsUsable()) Window = null;
             App = "kuronuri"; Schema = 1;
             return this;
         }
@@ -81,7 +83,7 @@ namespace Kuronuri.Core.Settings
         {
             var d = new AppSettings(false);
             App = d.App; Schema = d.Schema; Reasons = d.Reasons; ExportDpi = d.ExportDpi; JpegQuality = d.JpegQuality;
-            DefaultStyle = d.DefaultStyle; BrushWidthsMm = d.BrushWidthsMm; PrintDpi = d.PrintDpi;
+            DefaultStyle = d.DefaultStyle; BrushWidthsMm = d.BrushWidthsMm; PrintDpi = d.PrintDpi; Window = null;
         }
 
         public AppSettings() { }
@@ -135,6 +137,41 @@ namespace Kuronuri.Core.Settings
             {
                 return false;
             }
+        }
+    }
+}
+
+namespace Kuronuri.Core.Settings
+{
+    /// <summary>
+    /// Window placement and pane layout (ARCHITECTURE §12). Units are WPF DIPs. Holds no document information.
+    /// </summary>
+    [DataContract]
+    public sealed class WindowLayout
+    {
+        [DataMember(Name = "left", Order = 0)] public double Left;
+        [DataMember(Name = "top", Order = 1)] public double Top;
+        [DataMember(Name = "width", Order = 2)] public double Width;
+        [DataMember(Name = "height", Order = 3)] public double Height;
+        [DataMember(Name = "maximized", Order = 4)] public bool Maximized;
+        [DataMember(Name = "thumbsWidth", Order = 5)] public double ThumbsWidth = 160;
+        [DataMember(Name = "listWidth", Order = 6)] public double ListWidth = 320;
+        [DataMember(Name = "showThumbs", Order = 7)] public bool ShowThumbs = true;
+        [DataMember(Name = "showList", Order = 8)] public bool ShowList = true;
+        [DataMember(Name = "twoPane", Order = 9)] public bool TwoPane = true;
+
+        public bool IsUsable() =>
+            Finite(Left) && Finite(Top) && Width >= 400 && Height >= 300 && Width <= 20000 && Height <= 20000 &&
+            ThumbsWidth >= 60 && ThumbsWidth <= 1000 && ListWidth >= 120 && ListWidth <= 2000;
+
+        private static bool Finite(double v) => !double.IsNaN(v) && !double.IsInfinity(v) && Math.Abs(v) < 100000;
+
+        /// <summary>True when at least half of the window lies inside the given screen area (virtual screen).</summary>
+        public bool MostlyInside(double areaLeft, double areaTop, double areaWidth, double areaHeight)
+        {
+            double l = Math.Max(Left, areaLeft), t = Math.Max(Top, areaTop);
+            double r = Math.Min(Left + Width, areaLeft + areaWidth), b = Math.Min(Top + Height, areaTop + areaHeight);
+            return r > l && b > t && (r - l) * (b - t) >= 0.5 * Width * Height;
         }
     }
 }

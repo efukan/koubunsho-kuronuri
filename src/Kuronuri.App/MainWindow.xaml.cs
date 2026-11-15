@@ -42,6 +42,7 @@ namespace Kuronuri.App
         private readonly PageBitmapCache _pageCache = new PageBitmapCache(PageBitmapCache.DefaultBudget());
         private readonly PageBitmapCache _thumbCache = new PageBitmapCache(64L << 20, 200);
         private bool _syncing;
+        private double _lastThumbsWidth = 160, _lastListWidth = 320;
         private bool _busy;
         private ObservableCollection<ItemRow> _rows = new ObservableCollection<ItemRow>();
 
@@ -62,7 +63,7 @@ namespace Kuronuri.App
             }, Dispatcher);
             _highlightTimer.Stop();
 
-            _view.Changed += (s, e) => { leftCanvas.InvalidateVisual(); rightCanvas.InvalidateVisual(); UpdateStatus(); };
+            _view.Changed += (s, e) => { leftCanvas.InvalidateVisual(); rightCanvas.InvalidateVisual(); UpdateScrollBars(); UpdateStatus(); };
             _view.PageChanged += (s, e) => OnPageChanged();
             rightCanvas.SizeChanged += (s, e) => _view.SetViewport(rightCanvas.ActualWidth, rightCanvas.ActualHeight);
 
@@ -73,6 +74,7 @@ namespace Kuronuri.App
             ApplySettingsToUi();
             styleBlack.IsChecked = _settings.Style == RedactionStyle.Black;
             styleWhite.IsChecked = _settings.Style == RedactionStyle.WhiteWithBorder;
+            InitUx();
             UpdateStatus();
         }
 
@@ -185,7 +187,9 @@ namespace Kuronuri.App
             rightCanvas.CancelDrag();
             _tool = tool;
             _session?.Grouper.Close();
-            var target = tool switch { Tool.Rect => toolRect, Tool.Freehand => toolFree, Tool.Eraser => toolEraser, _ => toolSelect };
+            var target = tool switch { Tool.Rect => toolRect, Tool.Text => toolText, Tool.Freehand => toolFree, Tool.Eraser => toolEraser, _ => toolSelect };
+            if (tool == Tool.Text && _session != null) PreloadText(_view.PageIndex);
+            stHint.Text = ToolHint(tool);
             if (target.IsChecked != true) target.IsChecked = true;
             rightCanvas.InvalidateVisual();
         }
@@ -217,11 +221,15 @@ namespace Kuronuri.App
             if (thumbList == null) return;
             bool t = showThumbs.IsChecked == true, l = showList.IsChecked == true;
             thumbList.Visibility = split1.Visibility = t ? Visibility.Visible : Visibility.Collapsed;
-            colThumbs.Width = t ? new GridLength(160) : new GridLength(0);
+            if (t && colThumbs.Width.Value < 1) colThumbs.Width = new GridLength(_lastThumbsWidth);
+            if (!t && colThumbs.ActualWidth > 1) _lastThumbsWidth = colThumbs.ActualWidth;
+            if (!t) colThumbs.Width = new GridLength(0);
             colThumbs.MinWidth = t ? 100 : 0;
             colSplit1.Width = t ? new GridLength(4) : new GridLength(0);
-            listPanel.Visibility = split2.Visibility = l ? Visibility.Visible : Visibility.Collapsed;
-            colList.Width = l ? new GridLength(320) : new GridLength(0);
+            sidePanel.Visibility = split2.Visibility = l ? Visibility.Visible : Visibility.Collapsed;
+            if (l && colList.Width.Value < 1) colList.Width = new GridLength(_lastListWidth);
+            if (!l && colList.ActualWidth > 1) _lastListWidth = colList.ActualWidth;
+            if (!l) colList.Width = new GridLength(0);
             colList.MinWidth = l ? 200 : 0;
             colSplit2.Width = l ? new GridLength(4) : new GridLength(0);
         }
@@ -241,9 +249,27 @@ namespace Kuronuri.App
                 e.Handled = true;
                 return;
             }
-            if (mods != ModifierKeys.None) return;
             var focused = Keyboard.FocusedElement;
-            bool inSelector = focused is ComboBox || focused is ComboBoxItem || focused is ListBoxItem;
+            bool inSelector = focused is ComboBox || focused is ComboBoxItem || focused is ListBoxItem || focused is CheckBox;
+            bool arrow = key == Key.Left || key == Key.Right || key == Key.Up || key == Key.Down;
+
+            // Ctrl+A: every item on the current page (a list keeps its own Ctrl+A).
+            if (key == Key.A && mods == ModifierKeys.Control && !inSelector && _session != null)
+            {
+                _session.Select(_session.Items.Items.Where(i => i.PageIndex == _view.PageIndex).Select(i => i.Id).ToList());
+                e.Handled = true;
+                return;
+            }
+            // Arrows: nudge the selection by 1pt (Shift: 10pt); without a selection they scroll the page.
+            if (arrow && (mods == ModifierKeys.None || mods == ModifierKeys.Shift) && !inSelector && _session != null)
+            {
+                double step = mods == ModifierKeys.Shift ? 10 : 1;
+                double dx = key == Key.Left ? -step : key == Key.Right ? step : 0, dy = key == Key.Up ? -step : key == Key.Down ? step : 0;
+                if (!Nudge(dx, dy)) _view.ScrollBy(dx * 40 / step, dy * 40 / step);
+                e.Handled = true;
+                return;
+            }
+            if (mods != ModifierKeys.None) return;
             if (inSelector && (key == Key.Enter || key == Key.Escape || key == Key.Up || key == Key.Down || key == Key.Home ||
                                key == Key.End || key == Key.PageUp || key == Key.PageDown))
                 return;
@@ -253,6 +279,7 @@ namespace Kuronuri.App
                 case Key.R: SetTool(Tool.Rect); break;
                 case Key.B: SetTool(Tool.Freehand); break;
                 case Key.E: SetTool(Tool.Eraser); break;
+                case Key.T: SetTool(Tool.Text); break;
                 case Key.OemOpenBrackets: StepBrush(-1); break;
                 case Key.OemCloseBrackets: StepBrush(+1); break;
                 case Key.Delete: if (_session?.SelectedIds.Count > 0) DeleteSelection(); break;
@@ -326,7 +353,10 @@ namespace Kuronuri.App
             _syncing = false;
 
             double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
-            thumbList.ItemsSource = s.Pages.Select((p, i) => new ThumbVM(i, p.Width, p.Height, dpi, () => _session?.Renderer)).ToList();
+            _thumbs = s.Pages.Select((p, i) => new ThumbVM(i, p.Width, p.Height, dpi, () => _session?.Renderer)).ToList();
+            thumbList.ItemsSource = _thumbs;
+            UpdateThumbBadges();
+            ClearSearch();
             emptyHint.Visibility = Visibility.Collapsed;
             _view.SetViewport(rightCanvas.ActualWidth, rightCanvas.ActualHeight);
             _view.Reset(s.Pages.Count, i => (s.Pages[i].Width, s.Pages[i].Height));
@@ -339,6 +369,8 @@ namespace Kuronuri.App
         private void Items_Changed(object? sender, EventArgs e)
         {
             RebuildList();
+            UpdateThumbBadges();
+            RefreshSearchCoverage();
             leftCanvas.InvalidateVisual();
             rightCanvas.InvalidateVisual();
             UpdateStatus();
@@ -361,6 +393,7 @@ namespace Kuronuri.App
             s.Grouper.Close();
             int p = _view.PageIndex;
             _pageCache.SetPinnedPages(new[] { p - 1, p, p + 1 });
+            if (_tool == Tool.Text) PreloadText(p);
             if (thumbList.SelectedIndex != p)
             {
                 _syncing = true;
@@ -723,7 +756,9 @@ namespace Kuronuri.App
         {
             var win = new SettingsWindow(_settings.Clone()) { Owner = this };
             if (win.ShowDialog() != true) return;
+            var layout = _settings.Window;
             _settings = win.Result.Normalize();
+            _settings.Window = layout;
             if (!SettingsStore.TrySave(_settingsPath, _settings))
                 Info("設定は今回の起動中だけ有効です（設定ファイルを書き込めない場所にあります）。");
             ApplySettingsToUi();
@@ -747,6 +782,7 @@ namespace Kuronuri.App
         {
             if (_busy) { e.Cancel = true; return; }
             if (!ConfirmDiscard()) { e.Cancel = true; return; }
+            SaveWindowLayout();
             var s = _session;
             _session = null;
             s?.Dispose();
@@ -759,13 +795,17 @@ namespace Kuronuri.App
             var s = _session;
             if (s == null)
             {
-                stPage.Text = "ページ -/-"; stZoom.Text = "-%"; stItems.Text = "箇所 0"; stUnset.Text = "理由未設定 0";
+                if (!pageBox.IsKeyboardFocusWithin) pageBox.Text = "";
+                pageCountText.Text = "/ -";
+                if (!zoomBox.IsKeyboardFocusWithin) zoomBox.Text = "";
+                stItems.Text = "箇所 0"; stUnset.Text = "理由未設定 0";
                 stState.Text = "ファイルが開かれていません";
                 Title = AppTitle;
                 return;
             }
-            stPage.Text = "ページ " + (_view.PageIndex + 1) + "/" + s.Pages.Count;
-            stZoom.Text = Math.Round(_view.Zoom * 100) + "%";
+            if (!pageBox.IsKeyboardFocusWithin) pageBox.Text = (_view.PageIndex + 1).ToString();
+            pageCountText.Text = "/ " + s.Pages.Count;
+            if (!zoomBox.IsKeyboardFocusWithin) { _syncing = true; zoomBox.SelectedIndex = -1; zoomBox.Text = Math.Round(_view.Zoom * 100) + "%"; _syncing = false; }
             stItems.Text = "箇所 " + s.Items.Count;
             int unset = s.Items.Items.Count(i => i.Reason == null);
             stUnset.Text = "理由未設定 " + unset;

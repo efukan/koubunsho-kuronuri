@@ -13,10 +13,11 @@ using Kuronuri.Core.Editing;
 using Kuronuri.Core.Model;
 using Kuronuri.Core.Printing;
 using Kuronuri.Core.Rendering;
+using Kuronuri.Core.Text;
 
 namespace Kuronuri.App
 {
-    public enum Tool { Select, Rect, Freehand, Eraser }
+    public enum Tool { Select, Rect, Text, Freehand, Eraser }
 
     /// <summary>What a page canvas needs from the window.</summary>
     public interface IEditorHost
@@ -29,6 +30,15 @@ namespace Kuronuri.App
         Guid? HighlightId { get; }
         void Execute(EditCommand cmd);
         void HandleWheel(PageCanvas source, MouseWheelEventArgs e);
+
+        /// <summary>Text of the page when it has been read; otherwise null (and reading is started).</summary>
+        PageText? TextFor(int page);
+
+        /// <summary>Rectangles of the search hit shown on the current page (highlight only, not redactions).</summary>
+        IReadOnlyList<RectShape> SearchHighlight { get; }
+
+        /// <summary>Opens the item context menu for the current selection.</summary>
+        void ShowItemMenu(PageCanvas source);
     }
 
     /// <summary>
@@ -44,6 +54,8 @@ namespace Kuronuri.App
         private static readonly Brush BadgeBack = Frozen(new SolidColorBrush(Color.FromArgb(220, 0, 84, 166)));
         private static readonly Brush BadgeWarn = Frozen(new SolidColorBrush(Color.FromArgb(230, 214, 98, 0)));
         private static readonly Brush HighlightBrush = Frozen(new SolidColorBrush(Color.FromRgb(255, 200, 0)));
+        private static readonly Brush SearchFill = Frozen(new SolidColorBrush(Color.FromArgb(70, 255, 200, 0)));
+        private static readonly Brush SearchBorder = Frozen(new SolidColorBrush(Color.FromRgb(230, 140, 0)));
         private static readonly Typeface BadgeFace = new Typeface(new FontFamily("Yu Gothic UI, Meiryo, MS Gothic"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
         private const double HandleDip = 8;
@@ -51,7 +63,8 @@ namespace Kuronuri.App
 
         public PageCanvas()
         {
-            Focusable = false;
+            Focusable = true;
+            FocusVisualStyle = null;
             ClipToBounds = true;
             RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.HighQuality);
             _regionTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(160), DispatcherPriority.Background, (s, e) => { _regionTimer!.Stop(); InvalidateVisual(); }, Dispatcher);
@@ -220,7 +233,19 @@ namespace Kuronuri.App
                 foreach (var h in Handles(r)) dc.DrawRectangle(Brushes.White, new Pen(Brushes.DodgerBlue, 1 / k), HandleRect(h.P, k));
             }
 
+            // Search hit being looked at (highlight only; it is not a redaction).
+            foreach (var r in Host.SearchHighlight)
+                dc.DrawRectangle(SearchFill, new Pen(SearchBorder, 2 / k), new Rect(r.X, r.Y, r.W, r.H).Inflated(1 / k));
+
             // Tool previews.
+            if (_drag == DragKind.Marquee)
+            {
+                var m = MarqueeBox();
+                dc.DrawRectangle(SelBrush, new Pen(new SolidColorBrush(Color.FromRgb(0, 120, 215)), 1 / k) { DashStyle = DashStyles.Dash }, new Rect(m.L, m.T, m.W, m.H));
+            }
+            if (_drag == DragKind.TextSel && _text != null)
+                foreach (var r in TextRects.ForRange(_text, Math.Min(_textStart, _textEnd), Math.Max(_textStart, _textEnd)))
+                    dc.DrawRectangle(PreviewFill, new Pen(Brushes.Black, 1 / k) { DashStyle = DashStyles.Dash }, new Rect(r.X, r.Y, r.W, r.H));
             if (_drag == DragKind.Rect && _rectStart != null && _rectEnd != null)
             {
                 var r = ShapeOps.RectFromCorners(_rectStart.Value, _rectEnd.Value, v.PageWidthPt, v.PageHeightPt);
@@ -289,7 +314,7 @@ namespace Kuronuri.App
 
         // ------------------------------------------------------------------ input
 
-        private enum DragKind { None, Pan, Move, Resize, Rect, Stroke }
+        private enum DragKind { None, Pan, Move, Resize, Rect, Stroke, Marquee, TextSel }
         private DragKind _drag;
         private Point _panLast;
         private Point2 _moveStart;
@@ -299,6 +324,10 @@ namespace Kuronuri.App
         private H _resizeHandle;
         private Point2? _rectStart, _rectEnd;
         private readonly List<Point2> _stroke = new List<Point2>();
+        private Point2 _marqueeStart, _marqueeEnd;
+        private bool _marqueeAdd;
+        private PageText? _text;
+        private int _textStart, _textEnd;
 
         protected override void OnMouseWheel(MouseWheelEventArgs e)
         {
@@ -317,11 +346,22 @@ namespace Kuronuri.App
                 _drag = DragKind.Pan; _panLast = pos; CaptureMouse(); e.Handled = true; Cursor = Cursors.SizeAll;
                 return;
             }
-            if (e.ChangedButton != MouseButton.Left || !Editable) return;
-            e.Handled = true;
+            if (!Editable) return;
+            Focus();   // keyboard (arrows, Delete, Ctrl+A) goes to the page, not to a list that had focus
             var v = Host!.View;
             var p = ToPage(pos);
             double tol = 3 / v.DipPerPt;
+            if (e.ChangedButton == MouseButton.Right)
+            {
+                var target = HitItem(s, v.PageIndex, p, tol);
+                if (target != null && !s.IsSelected(target.Id)) s.Select(new[] { target.Id });
+                e.Handled = true;
+                InvalidateVisual();
+                if (target != null) Host.ShowItemMenu(this);
+                return;
+            }
+            if (e.ChangedButton != MouseButton.Left) return;
+            e.Handled = true;
             switch (Host.Tool)
             {
                 case Tool.Select:
@@ -339,7 +379,13 @@ namespace Kuronuri.App
                     }
                     var hit = HitItem(s, v.PageIndex, p, tol);
                     bool add = (Keyboard.Modifiers & (ModifierKeys.Shift | ModifierKeys.Control)) != 0;
-                    if (hit == null) { if (!add) s.Select(new Guid[0]); InvalidateVisual(); return; }
+                    if (hit == null)
+                    {
+                        // Empty place: rubber-band selection (a plain click clears the selection on mouse up).
+                        _drag = DragKind.Marquee; _marqueeStart = _marqueeEnd = p; _marqueeAdd = add; CaptureMouse();
+                        InvalidateVisual();
+                        return;
+                    }
                     if (add)
                     {
                         var ids = s.SelectedIds.ToList();
@@ -355,6 +401,15 @@ namespace Kuronuri.App
                 case Tool.Rect:
                     _drag = DragKind.Rect; _rectStart = _rectEnd = ToPageClamped(pos); CaptureMouse();
                     break;
+                case Tool.Text:
+                {
+                    _text = Host.TextFor(v.PageIndex);
+                    int idx = _text?.HitChar(p, 1.5 / v.DipPerPt + 0.5) ?? -1;
+                    if (idx >= 0) { _drag = DragKind.TextSel; _textStart = _textEnd = idx; }
+                    else { _drag = DragKind.Rect; _rectStart = _rectEnd = ToPageClamped(pos); }   // no text here: works like the rectangle tool
+                    CaptureMouse();
+                    break;
+                }
                 case Tool.Freehand:
                     _drag = DragKind.Stroke; _stroke.Clear(); _stroke.Add(ToPageClamped(pos)); CaptureMouse();
                     break;
@@ -412,6 +467,15 @@ namespace Kuronuri.App
                 case DragKind.Rect:
                     _rectEnd = ToPageClamped(pos);
                     break;
+                case DragKind.Marquee:
+                    _marqueeEnd = ToPageClamped(pos);
+                    break;
+                case DragKind.TextSel:
+                {
+                    int idx = _text!.HitChar(ToPage(pos), 1.5 / v.DipPerPt + 0.5);
+                    if (idx >= 0) _textEnd = idx;
+                    break;
+                }
                 case DragKind.Stroke:
                 {
                     var p = ToPageClamped(pos);
@@ -430,6 +494,12 @@ namespace Kuronuri.App
         {
             if (!Editable) { Cursor = null; return; }
             var tool = Host!.Tool;
+            if (tool == Tool.Text)
+            {
+                var t = Host.TextFor(Host.View.PageIndex);
+                Cursor = t != null && t.HitChar(ToPage(pos), 1.5 / Host.View.DipPerPt + 0.5) >= 0 ? Cursors.IBeam : Cursors.Cross;
+                return;
+            }
             if (tool == Tool.Rect || tool == Tool.Freehand) { Cursor = Cursors.Cross; return; }
             if (tool == Tool.Eraser) { Cursor = Cursors.Hand; return; }
             var single = SingleRectSelection(s);
@@ -445,6 +515,9 @@ namespace Kuronuri.App
                     }
             Cursor = HitItem(s, v.PageIndex, p, 3 / v.DipPerPt) != null ? Cursors.SizeAll : null;
         }
+
+        private BoxD MarqueeBox() => new BoxD(Math.Min(_marqueeStart.X, _marqueeEnd.X), Math.Min(_marqueeStart.Y, _marqueeEnd.Y),
+            Math.Max(_marqueeStart.X, _marqueeEnd.X), Math.Max(_marqueeStart.Y, _marqueeEnd.Y));
 
         private static RectShape Resize(RectShape r, H h, Point2 p)
         {
@@ -501,6 +574,27 @@ namespace Kuronuri.App
                     }
                     break;
                 }
+                case DragKind.Marquee:
+                {
+                    var m = MarqueeBox();
+                    double minPt = 3 / v.DipPerPt;
+                    if (m.W < minPt && m.H < minPt) { if (!_marqueeAdd) s.Select(new Guid[0]); break; }   // a click on an empty place
+                    var inside = s.Items.Items.Where(i => i.PageIndex == v.PageIndex && ShapeOps.Box(i).Intersects(m)).Select(i => i.Id);
+                    s.Select(_marqueeAdd ? s.SelectedIds.Concat(inside).ToList() : inside.ToList());
+                    break;
+                }
+                case DragKind.TextSel:
+                {
+                    var rects = TextRects.ForRange(_text!, Math.Min(_textStart, _textEnd), Math.Max(_textStart, _textEnd));
+                    _text = null;
+                    if (rects.Count > 0)
+                    {
+                        var cmd = new AddItemCommand(new RedactionItem(Guid.NewGuid(), v.PageIndex, rects.Cast<Shape>().ToList(), Host.CurrentReason));
+                        Host.Execute(cmd);
+                        s.Select(new[] { cmd.Item.Id });
+                    }
+                    break;
+                }
                 case DragKind.Stroke:
                 {
                     var stroke = ShapeOps.FinishStroke(_stroke, Host.BrushPt);
@@ -517,7 +611,7 @@ namespace Kuronuri.App
         {
             if (_drag == DragKind.None) return;
             _drag = DragKind.None;
-            _stroke.Clear(); _rectStart = _rectEnd = null; _resizeItem = null; _resizeRect = null; _moveDx = _moveDy = 0;
+            _stroke.Clear(); _rectStart = _rectEnd = null; _resizeItem = null; _resizeRect = null; _moveDx = _moveDy = 0; _text = null;
             ReleaseMouseCapture();
             InvalidateVisual();
         }

@@ -197,8 +197,25 @@ namespace Kuronuri.App
             return data;
         }
 
+        // ------------------------------------------------------------------ page text (ARCHITECTURE §11.5; memory only)
+
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<int, Kuronuri.Core.Text.PageText> _texts =
+            new System.Collections.Concurrent.ConcurrentDictionary<int, Kuronuri.Core.Text.PageText>();
+
+        public Kuronuri.Core.Text.PageText? CachedText(int page) => _texts.TryGetValue(page, out var t) ? t : null;
+
+        /// <summary>Worker thread: the page text, read once and kept for the lifetime of the session.</summary>
+        public Kuronuri.Core.Text.PageText ReadText(int page) => _texts.GetOrAdd(page, p => Kuronuri.Core.Text.PageText.Read(Doc, p));
+
+        public System.Threading.Tasks.Task<Kuronuri.Core.Text.PageText> GetTextAsync(int page)
+        {
+            var t = CachedText(page);
+            return t != null ? System.Threading.Tasks.Task.FromResult(t) : Worker.Run(() => ReadText(page));
+        }
+
         public void Dispose()
         {
+            _texts.Clear();
             var renderer = Renderer;
             Renderer = null;
             Worker.Run(() =>

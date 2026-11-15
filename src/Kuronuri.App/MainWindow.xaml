@@ -5,7 +5,8 @@
         xmlns:local="clr-namespace:Kuronuri.App"
         Title="公文書くろぬり" Width="1400" Height="900" MinWidth="900" MinHeight="600"
         FontFamily="Yu Gothic UI, Meiryo, MS Gothic" FontSize="12"
-        WindowStartupLocation="CenterScreen" UseLayoutRounding="True">
+        WindowStartupLocation="CenterScreen" UseLayoutRounding="True"
+        AllowDrop="True" DragOver="Window_DragOver" Drop="Window_Drop">
   <Window.CommandBindings>
     <CommandBinding Command="local:Cmd.Open" Executed="Open_Executed" />
     <CommandBinding Command="local:Cmd.SaveReview" Executed="SaveReview_Executed" CanExecute="HasDoc_CanExecute" />
@@ -25,6 +26,9 @@
     <CommandBinding Command="local:Cmd.FitPage" Executed="FitPage_Executed" CanExecute="HasDoc_CanExecute" />
     <CommandBinding Command="local:Cmd.TogglePanes" Executed="TogglePanes_Executed" />
     <CommandBinding Command="local:Cmd.Settings" Executed="Settings_Executed" />
+    <CommandBinding Command="local:Cmd.NextUnset" Executed="NextUnset_Executed" CanExecute="HasDoc_CanExecute" />
+    <CommandBinding Command="local:Cmd.PrevUnset" Executed="PrevUnset_Executed" CanExecute="HasDoc_CanExecute" />
+    <CommandBinding Command="local:Cmd.Find" Executed="Find_Executed" CanExecute="HasDoc_CanExecute" />
   </Window.CommandBindings>
   <Window.InputBindings>
     <KeyBinding Command="local:Cmd.Open" Gesture="Ctrl+O" />
@@ -47,6 +51,9 @@
     <KeyBinding Command="local:Cmd.FitWidth" Gesture="Ctrl+NumPad2" />
     <KeyBinding Command="local:Cmd.FitPage" Gesture="Ctrl+NumPad0" />
     <KeyBinding Command="local:Cmd.TogglePanes" Gesture="F6" />
+    <KeyBinding Command="local:Cmd.NextUnset" Gesture="F8" />
+    <KeyBinding Command="local:Cmd.PrevUnset" Gesture="Shift+F8" />
+    <KeyBinding Command="local:Cmd.Find" Gesture="Ctrl+F" />
   </Window.InputBindings>
 
   <DockPanel>
@@ -72,6 +79,7 @@
         <r:RibbonGroup Header="ツール">
           <r:RibbonRadioButton x:Name="toolSelect" Label="選択" LargeImageSource="{local:Glyph E8B0}" GroupName="tool" IsChecked="True" Checked="Tool_Checked" Tag="Select" ToolTipTitle="選択 (V)" />
           <r:RibbonRadioButton x:Name="toolRect" Label="矩形" LargeImageSource="{local:Glyph E71A}" GroupName="tool" Checked="Tool_Checked" Tag="Rect" ToolTipTitle="矩形 (R)" />
+          <r:RibbonRadioButton x:Name="toolText" Label="文字" LargeImageSource="{local:Glyph E8D2}" GroupName="tool" Checked="Tool_Checked" Tag="Text" ToolTipTitle="文字 (T)" ToolTipDescription="文字の上をドラッグすると、その文字を覆う黒塗りを行ごとに作ります。" />
           <r:RibbonRadioButton x:Name="toolFree" Label="フリーハンド" LargeImageSource="{local:Glyph E76D}" GroupName="tool" Checked="Tool_Checked" Tag="Freehand" ToolTipTitle="フリーハンド (B)" />
           <r:RibbonRadioButton x:Name="toolEraser" Label="消しゴム" LargeImageSource="{local:Glyph E75C}" GroupName="tool" Checked="Tool_Checked" Tag="Eraser" ToolTipTitle="消しゴム (E)" />
           <StackPanel Margin="6,4,2,0" VerticalAlignment="Top">
@@ -89,6 +97,8 @@
           <r:RibbonButton Label="結合" SmallImageSource="{local:Glyph E71B}" Command="local:Cmd.Merge" ToolTipTitle="結合 (Ctrl+G)" ToolTipDescription="同じページの複数の箇所を1つにまとめます。" />
           <r:RibbonButton Label="分割" SmallImageSource="{local:Glyph E8C6}" Command="local:Cmd.Split" ToolTipTitle="分割 (Ctrl+Shift+G)" ToolTipDescription="1つの箇所を図形ごとの箇所に分けます。" />
           <r:RibbonButton Label="削除" SmallImageSource="{local:Glyph E74D}" Command="local:Cmd.Delete" ToolTipTitle="削除 (Delete)" />
+          <r:RibbonButton Label="次の未設定" LargeImageSource="{local:Glyph E7BA}" Command="local:Cmd.NextUnset" ToolTipTitle="次の未設定へ (F8)" ToolTipDescription="理由が設定されていない箇所へ順に移動します（Shift+F8 で前へ）。" />
+          <r:RibbonButton Label="検索" LargeImageSource="{local:Glyph E721}" Command="local:Cmd.Find" ToolTipTitle="検索 (Ctrl+F)" ToolTipDescription="語句や電話番号などを検索して、まとめて黒塗りにします。" />
         </r:RibbonGroup>
         <r:RibbonGroup Header="スタイル">
           <r:RibbonRadioButton x:Name="styleBlack" Label="黒塗り" SmallImageSource="{local:Glyph E91F}" GroupName="style" IsChecked="True" Checked="Style_Checked" Tag="Black" />
@@ -118,15 +128,37 @@
     </r:Ribbon>
 
     <StatusBar DockPanel.Dock="Bottom">
-      <StatusBarItem><TextBlock x:Name="stPage" Text="ページ -/-" /></StatusBarItem>
+      <StatusBarItem>
+        <StackPanel Orientation="Horizontal">
+          <Button x:Name="prevPageButton" Content="&#xE76B;" FontFamily="Segoe MDL2 Assets" Width="24" Click="PrevPage_Click" ToolTip="前のページ (PageUp)" Background="Transparent" BorderThickness="0" />
+          <TextBlock Text="ページ" VerticalAlignment="Center" Margin="4,0,4,0" />
+          <TextBox x:Name="pageBox" Width="44" TextAlignment="Right" KeyDown="PageBox_KeyDown" LostKeyboardFocus="PageBox_LostFocus" ToolTip="ページ番号を入れて Enter" />
+          <TextBlock x:Name="pageCountText" Text="/ -" VerticalAlignment="Center" Margin="4,0,4,0" />
+          <Button x:Name="nextPageButton" Content="&#xE76C;" FontFamily="Segoe MDL2 Assets" Width="24" Click="NextPage_Click" ToolTip="次のページ (PageDown)" Background="Transparent" BorderThickness="0" />
+        </StackPanel>
+      </StatusBarItem>
       <Separator />
-      <StatusBarItem><TextBlock x:Name="stZoom" Text="-%" /></StatusBarItem>
+      <StatusBarItem>
+        <ComboBox x:Name="zoomBox" Width="110" IsEditable="True" KeyDown="ZoomBox_KeyDown" SelectionChanged="ZoomBox_SelectionChanged" LostKeyboardFocus="ZoomBox_LostFocus" ToolTip="ズーム（数字を入れて Enter でも指定できます）">
+          <ComboBoxItem Content="25%" />
+          <ComboBoxItem Content="50%" />
+          <ComboBoxItem Content="75%" />
+          <ComboBoxItem Content="100%" />
+          <ComboBoxItem Content="150%" />
+          <ComboBoxItem Content="200%" />
+          <ComboBoxItem Content="400%" />
+          <ComboBoxItem Content="幅に合わせる" />
+          <ComboBoxItem Content="全体" />
+        </ComboBox>
+      </StatusBarItem>
       <Separator />
       <StatusBarItem><TextBlock x:Name="stItems" Text="箇所 0" /></StatusBarItem>
       <Separator />
       <StatusBarItem><TextBlock x:Name="stUnset" Text="理由未設定 0" /></StatusBarItem>
       <Separator />
       <StatusBarItem><TextBlock x:Name="stState" Text="ファイルが開かれていません" /></StatusBarItem>
+      <Separator />
+      <StatusBarItem><TextBlock x:Name="stHint" Foreground="DimGray" /></StatusBarItem>
     </StatusBar>
 
     <Grid x:Name="mainGrid">
@@ -149,74 +181,154 @@
         <ListBox.ItemTemplate>
           <DataTemplate DataType="{x:Type local:ThumbVM}">
             <StackPanel Margin="4">
-              <Border BorderBrush="#FF9A9A9A" BorderThickness="1" Background="White" HorizontalAlignment="Center">
-                <Image Source="{Binding Image}" Width="120" Height="{Binding HeightDip}" Stretch="Fill" />
-              </Border>
+              <Grid HorizontalAlignment="Center">
+                <Border BorderBrush="#FF9A9A9A" BorderThickness="1" Background="White">
+                  <Grid>
+                    <Image Source="{Binding Image}" Width="120" Height="{Binding HeightDip}" Stretch="Fill" />
+                    <Image Source="{Binding Overlay}" Width="120" Height="{Binding HeightDip}" Stretch="Fill" />
+                  </Grid>
+                </Border>
+                <Border x:Name="badge" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-4,-6,0" MinWidth="20" Height="20"
+                        CornerRadius="10" Padding="5,0" Background="#FF0054A6" Visibility="Collapsed" ToolTip="{Binding BadgeToolTip}">
+                  <TextBlock Text="{Binding Count}" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+              </Grid>
               <TextBlock Text="{Binding Label}" HorizontalAlignment="Center" Margin="0,2,0,0" />
             </StackPanel>
+            <DataTemplate.Triggers>
+              <DataTrigger Binding="{Binding HasItems}" Value="True">
+                <Setter TargetName="badge" Property="Visibility" Value="Visible" />
+              </DataTrigger>
+              <DataTrigger Binding="{Binding HasUnset}" Value="True">
+                <Setter TargetName="badge" Property="Background" Value="#FFD66200" />
+              </DataTrigger>
+            </DataTemplate.Triggers>
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>
       <GridSplitter x:Name="split1" Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="#FFD0D0D0" />
 
       <Grid Grid.Column="2" x:Name="leftHost">
-        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-        <Border Background="#FF3C3F46" Padding="6,2"><TextBlock Text="原本（閲覧のみ）" Foreground="White" /></Border>
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+        <Border Grid.ColumnSpan="2" Background="#FF3C3F46" Padding="6,2"><TextBlock Text="原本（閲覧のみ）" Foreground="White" /></Border>
         <local:PageCanvas x:Name="leftCanvas" Grid.Row="1" />
+        <ScrollBar x:Name="leftV" Grid.Row="1" Grid.Column="1" Orientation="Vertical" Scroll="ScrollBar_Scroll" />
+        <ScrollBar x:Name="leftH" Grid.Row="2" Orientation="Horizontal" Scroll="ScrollBar_Scroll" />
       </Grid>
       <Border Grid.Column="3" Background="#FF2B2D31" />
       <Grid Grid.Column="4" x:Name="rightHost">
-        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-        <Border Background="#FF1F1F1F" Padding="6,2"><TextBlock Text="黒塗りプレビュー（編集）  Space 押下中は透過" Foreground="White" /></Border>
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+        <Border Grid.ColumnSpan="2" Background="#FF1F1F1F" Padding="6,2"><TextBlock Text="黒塗りプレビュー（編集）  Space 押下中は透過" Foreground="White" /></Border>
         <local:PageCanvas x:Name="rightCanvas" Grid.Row="1" />
-        <TextBlock x:Name="emptyHint" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="White" FontSize="16"
-                   Text="「開く」(Ctrl+O) で PDF を開いてください" />
+        <ScrollBar x:Name="rightV" Grid.Row="1" Grid.Column="1" Orientation="Vertical" Scroll="ScrollBar_Scroll" />
+        <ScrollBar x:Name="rightH" Grid.Row="2" Orientation="Horizontal" Scroll="ScrollBar_Scroll" />
+        <TextBlock x:Name="emptyHint" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="White" FontSize="16" TextAlignment="Center"
+                   Text="「開く」(Ctrl+O) で PDF を開くか、&#x0a;PDF ファイルをここにドラッグしてください" />
       </Grid>
       <GridSplitter x:Name="split2" Grid.Column="5" Width="4" HorizontalAlignment="Stretch" Background="#FFD0D0D0" />
 
-      <DockPanel Grid.Column="6" x:Name="listPanel">
-        <Border DockPanel.Dock="Top" Background="#FFEDEDED" Padding="6,4"><TextBlock Text="箇所リスト" FontWeight="Bold" /></Border>
-        <Border DockPanel.Dock="Bottom" Background="#FFF5F5F5" BorderBrush="#FFD0D0D0" BorderThickness="0,1,0,0" Padding="6">
-          <StackPanel>
-            <TextBlock x:Name="reasonEditTitle" Text="選択した箇所の理由" Margin="0,0,0,3" />
-            <ComboBox x:Name="reasonEditCombo" SelectionChanged="ReasonEdit_SelectionChanged" IsEnabled="False" />
-            <TextBlock Text="自由記述" Margin="0,6,0,3" />
-            <TextBox x:Name="freeTextEdit" IsEnabled="False" LostKeyboardFocus="FreeText_LostFocus" KeyDown="FreeText_KeyDown" />
-          </StackPanel>
-        </Border>
-        <ListView x:Name="itemList" SelectionMode="Extended" SelectionChanged="ItemList_SelectionChanged"
-                  PreviewMouseLeftButtonUp="ItemList_PreviewMouseLeftButtonUp" BorderThickness="0"
-                  VirtualizingPanel.IsVirtualizing="True">
-          <ListView.ItemContainerStyle>
-            <Style TargetType="ListViewItem">
-              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-              <Style.Triggers>
-                <DataTrigger Binding="{Binding IsUnset}" Value="True">
-                  <Setter Property="Background" Value="#FFFFE2C2" />
-                  <Setter Property="ToolTip" Value="理由が設定されていません" />
-                </DataTrigger>
-              </Style.Triggers>
-            </Style>
-          </ListView.ItemContainerStyle>
-          <ListView.View>
-            <GridView>
-              <GridViewColumn Header="番号" Width="44" DisplayMemberBinding="{Binding Number}" />
-              <GridViewColumn Header="頁" Width="40" DisplayMemberBinding="{Binding Page}" />
-              <GridViewColumn Header="理由" Width="160" DisplayMemberBinding="{Binding ReasonText}" />
-              <GridViewColumn Header="種別" Width="64">
-                <GridViewColumn.CellTemplate>
-                  <DataTemplate>
-                    <StackPanel Orientation="Horizontal" ToolTip="{Binding Kind}">
-                      <TextBlock Text="{Binding KindGlyph}" FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Margin="0,1,4,0" />
-                      <TextBlock Text="{Binding Kind}" />
-                    </StackPanel>
-                  </DataTemplate>
-                </GridViewColumn.CellTemplate>
-              </GridViewColumn>
-            </GridView>
-          </ListView.View>
-        </ListView>
-      </DockPanel>
+      <TabControl Grid.Column="6" x:Name="sidePanel" BorderThickness="0" Padding="0">
+        <TabItem Header="箇所リスト" x:Name="listTab">
+          <DockPanel x:Name="listPanel">
+            <Border DockPanel.Dock="Top" Background="#FFEDEDED" Padding="6,3">
+              <DockPanel>
+                <Button DockPanel.Dock="Right" Command="local:Cmd.NextUnset" Padding="6,1" ToolTip="次の未設定へ (F8)">
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="次の未設定" />
+                    <TextBlock Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" Margin="4,2,0,0" FontSize="10" />
+                  </StackPanel>
+                </Button>
+                <TextBlock Text="クリックで移動・右クリックでメニュー" Foreground="DimGray" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+              </DockPanel>
+            </Border>
+            <Border DockPanel.Dock="Bottom" Background="#FFF5F5F5" BorderBrush="#FFD0D0D0" BorderThickness="0,1,0,0" Padding="6">
+              <StackPanel>
+                <TextBlock x:Name="reasonEditTitle" Text="選択した箇所の理由" Margin="0,0,0,3" />
+                <ComboBox x:Name="reasonEditCombo" SelectionChanged="ReasonEdit_SelectionChanged" IsEnabled="False" />
+                <TextBlock Text="自由記述" Margin="0,6,0,3" />
+                <TextBox x:Name="freeTextEdit" IsEnabled="False" LostKeyboardFocus="FreeText_LostFocus" KeyDown="FreeText_KeyDown" />
+              </StackPanel>
+            </Border>
+            <ListView x:Name="itemList" SelectionMode="Extended" SelectionChanged="ItemList_SelectionChanged"
+                      PreviewMouseLeftButtonUp="ItemList_PreviewMouseLeftButtonUp" ContextMenuOpening="ItemList_ContextMenuOpening"
+                      BorderThickness="0" VirtualizingPanel.IsVirtualizing="True">
+              <ListView.ContextMenu>
+                <ContextMenu />
+              </ListView.ContextMenu>
+              <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                  <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsUnset}" Value="True">
+                      <Setter Property="Background" Value="#FFFFE2C2" />
+                      <Setter Property="ToolTip" Value="理由が設定されていません" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </ListView.ItemContainerStyle>
+              <ListView.View>
+                <GridView>
+                  <GridViewColumn Header="番号" Width="44" DisplayMemberBinding="{Binding Number}" />
+                  <GridViewColumn Header="頁" Width="40" DisplayMemberBinding="{Binding Page}" />
+                  <GridViewColumn Header="理由" Width="160" DisplayMemberBinding="{Binding ReasonText}" />
+                  <GridViewColumn Header="種別" Width="64">
+                    <GridViewColumn.CellTemplate>
+                      <DataTemplate>
+                        <StackPanel Orientation="Horizontal" ToolTip="{Binding Kind}">
+                          <TextBlock Text="{Binding KindGlyph}" FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Margin="0,1,4,0" />
+                          <TextBlock Text="{Binding Kind}" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </GridViewColumn.CellTemplate>
+                  </GridViewColumn>
+                </GridView>
+              </ListView.View>
+            </ListView>
+          </DockPanel>
+        </TabItem>
+
+        <TabItem Header="検索" x:Name="searchTab">
+          <DockPanel Margin="6">
+            <StackPanel DockPanel.Dock="Top">
+              <DockPanel>
+                <Button DockPanel.Dock="Right" Content="検索" Width="56" Margin="4,0,0,0" Click="Search_Click" />
+                <TextBox x:Name="searchBox" KeyDown="SearchBox_KeyDown" ToolTip="語句（全角・半角、大文字・小文字は区別しません）" />
+              </DockPanel>
+              <WrapPanel Margin="0,6,0,0">
+                <ComboBox x:Name="presetCombo" Width="150" Margin="0,0,0,4" SelectionChanged="Preset_SelectionChanged" ToolTip="定型のパターンで検索します" />
+                <CheckBox x:Name="regexCheck" Content="正規表現" Margin="8,0,0,4" VerticalAlignment="Center" />
+                <CheckBox x:Name="ignoreSpaceCheck" Content="空白を無視" Margin="8,0,0,4" VerticalAlignment="Center" IsChecked="True" />
+              </WrapPanel>
+              <TextBlock x:Name="searchStatus" Margin="0,6,0,4" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+              <StackPanel Orientation="Horizontal">
+                <Button Content="すべて選ぶ" Padding="6,1" Click="SearchSelectAll_Click" />
+                <Button Content="選択を外す" Padding="6,1" Margin="4,0,0,0" Click="SearchSelectNone_Click" />
+              </StackPanel>
+              <Button x:Name="searchApplyButton" Content="選んだ箇所を黒塗りにする" Margin="0,6,0,0" Padding="6,4" FontWeight="Bold" Click="SearchApply_Click" IsEnabled="False" />
+              <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Foreground="DimGray" FontSize="11"
+                         Text="文字情報のない部分（スキャン画像・図の中の文字など）は検索できません。黒塗り漏れがないか、必ず目視でも確認してください。" />
+            </StackPanel>
+            <ListView x:Name="searchList" SelectionMode="Single" SelectionChanged="SearchList_SelectionChanged" BorderThickness="1">
+              <ListView.View>
+                <GridView>
+                  <GridViewColumn Width="30">
+                    <GridViewColumn.CellTemplate>
+                      <DataTemplate><CheckBox IsChecked="{Binding Selected, Mode=TwoWay}" /></DataTemplate>
+                    </GridViewColumn.CellTemplate>
+                  </GridViewColumn>
+                  <GridViewColumn Header="頁" Width="36" DisplayMemberBinding="{Binding Page}" />
+                  <GridViewColumn Header="内容" Width="190" DisplayMemberBinding="{Binding Preview}" />
+                  <GridViewColumn Header="" Width="30" DisplayMemberBinding="{Binding State}" />
+                </GridView>
+              </ListView.View>
+            </ListView>
+          </DockPanel>
+        </TabItem>
+      </TabControl>
     </Grid>
   </DockPanel>
 </Window>
