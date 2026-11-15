@@ -55,6 +55,7 @@ namespace Kuronuri.App
         private static readonly Brush PreviewFill = Frozen(new SolidColorBrush(Color.FromArgb(110, 0, 0, 0)));
         private static readonly Brush BadgeBack = Frozen(new SolidColorBrush(Color.FromArgb(220, 0, 84, 166)));
         private static readonly Brush BadgeWarn = Frozen(new SolidColorBrush(Color.FromArgb(230, 214, 98, 0)));
+        private static readonly Brush BadgeCodeText = Frozen(new SolidColorBrush(Color.FromRgb(0, 84, 166)));
         private static readonly Brush HighlightBrush = Frozen(new SolidColorBrush(Color.FromRgb(255, 200, 0)));
         private static readonly Brush SearchFill = Frozen(new SolidColorBrush(Color.FromArgb(70, 255, 200, 0)));
         private static readonly Brush SearchBorder = Frozen(new SolidColorBrush(Color.FromRgb(230, 140, 0)));
@@ -324,7 +325,7 @@ namespace Kuronuri.App
             dc.Pop();
 
             // Selection, highlight, labels.
-            var badges = new List<(string Text, BoxD Box, bool Warn)>();
+            var badges = new List<(string Number, string? Code, BoxD Box, bool Warn)>();
             foreach (var item in onPage)
             {
                 var shown = dragPage && _drag == DragKind.Move && s.IsSelected(item.Id) ? ShapeOps.Translate(item, _moveDx, _moveDy) : item;
@@ -336,7 +337,7 @@ namespace Kuronuri.App
                 }
                 if (Host.HighlightId == item.Id)
                     dc.DrawRectangle(null, new Pen(HighlightBrush, 4 / k), new Rect(bb.L, bb.T, Math.Max(0, bb.W), Math.Max(0, bb.H)).Inflated(4 / k));
-                badges.Add((numbers[item.Id].ToString(CultureInfo.InvariantCulture) + (item.Reason?.Code is { Length: > 0 } c ? " " + c : ""),
+                badges.Add((Kuronuri.Core.Hybrid.HybridWriter.NumberLabel(numbers[item.Id]), item.Reason?.Code is { Length: > 0 } c ? c : null,
                     ShapeOps.Box(Kuronuri.Core.Geometry.CoordMap.ToView(Rot, BaseW, BaseH, shown)), item.Reason == null));
             }
             var single = SingleRectSelection(s);
@@ -352,7 +353,7 @@ namespace Kuronuri.App
 
             if (dragPage) DrawPreviews(dc, k);   // the drag in progress
             dc.Pop();   // base -> view
-            foreach (var b in badges) DrawBadge(dc, b.Text, b.Box.L, b.Box.T, k, b.Warn);   // upright, in view coordinates
+            foreach (var b in badges) DrawBadge(dc, b.Number, b.Code, b.Box.L, b.Box.T, k, b.Warn);   // upright, in view coordinates
             dc.Pop();   // scale / offset
         }
 
@@ -400,15 +401,26 @@ namespace Kuronuri.App
             return st.WidthPt > 2 * b ? st with { WidthPt = st.WidthPt - 2 * b } : null;
         }
 
-        private void DrawBadge(DrawingContext dc, string text, double x, double y, double k, bool warn)
+        /// <summary>
+        /// Item label (ARCHITECTURE §11.2): the number ("No.1", blue, or orange while the reason is unset) and the reason code
+        /// ("3号", blue on white) as two separate segments, so that "1" and "3号" are not read together as "13号".
+        /// </summary>
+        private void DrawBadge(DrawingContext dc, string number, string? code, double x, double y, double k, bool warn)
         {
-            var ft = new FormattedText(text, CultureInfo.GetCultureInfo("ja-JP"), FlowDirection.LeftToRight, BadgeFace, 11 / k, Brushes.White,
-                VisualTreeHelper.GetDpi(this).PixelsPerDip);
-            double pad = 2 / k;
-            var rect = new Rect(x, y - ft.Height - 2 * pad, ft.Width + 2 * pad, ft.Height + 2 * pad);
-            if (rect.Y < 0) rect.Y = y;
-            dc.DrawRectangle(warn ? BadgeWarn : BadgeBack, null, rect);
-            dc.DrawText(ft, new Point(rect.X + pad, rect.Y + pad));
+            var culture = CultureInfo.GetCultureInfo("ja-JP");
+            double dip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+            var num = new FormattedText(number, culture, FlowDirection.LeftToRight, BadgeFace, 11 / k, Brushes.White, dip);
+            var cod = code == null ? null : new FormattedText(code, culture, FlowDirection.LeftToRight, BadgeFace, 11 / k, BadgeCodeText, dip);
+            double padX = 3 / k, padY = 2 / k, h = num.Height + 2 * padY;
+            var left = new Rect(x, y - h, num.Width + 2 * padX, h);
+            if (left.Y < 0) left.Y = y;
+            dc.DrawRectangle(warn ? BadgeWarn : BadgeBack, null, left);
+            dc.DrawText(num, new Point(left.X + padX, left.Y + padY));
+            if (cod == null) return;
+            double line = 1 / k;
+            var right = new Rect(left.Right, left.Y, cod.Width + 2 * padX, h);
+            dc.DrawRectangle(Brushes.White, new Pen(BadgeCodeText, line), new Rect(right.X + line / 2, right.Y + line / 2, right.Width - line, right.Height - line));
+            dc.DrawText(cod, new Point(right.X + padX, right.Y + padY));
         }
 
         // ------------------------------------------------------------------ handles

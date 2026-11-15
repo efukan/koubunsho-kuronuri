@@ -92,9 +92,15 @@ namespace Kuronuri.Core.Hybrid
         public const string OriginalName = "original.pdf";
         public const string ProjectName = "kuronuri-project.json";
 
-        /// <summary>Label drawn at the top-left of an item: display number + reason code (e.g. "3 1号").</summary>
+        /// <summary>
+        /// Label drawn at the top-left of an item: display number and reason code, e.g. "No.3（1号）" ("No.3" without a
+        /// reason). The prefix and brackets keep "1 3号" from being read as "13号" (ARCHITECTURE §9.1).
+        /// </summary>
         public static string LabelText(int number, RedactionItem item) =>
-            number.ToString(CultureInfo.InvariantCulture) + (item.Reason == null || item.Reason.Code.Length == 0 ? "" : " " + item.Reason.Code);
+            NumberLabel(number) + (item.Reason == null || item.Reason.Code.Length == 0 ? "" : "（" + item.Reason.Code + "）");
+
+        /// <summary>The display number as shown on labels and the screen badge ("No.3").</summary>
+        public static string NumberLabel(int number) => "No." + number.ToString(CultureInfo.InvariantCulture);
 
         /// <summary>Top of the label in display space: above the item, or just inside it when there is no room.</summary>
         public static double LabelTop(double itemTop) => itemTop >= 12 ? itemTop - 11 : itemTop + 1;

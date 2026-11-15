@@ -22,6 +22,20 @@ namespace Kuronuri.Core.Tests
             new RedactionProject(new OriginalInfo(Util.Sha(D.Td.Bytes), D.Td.Bytes.Length, "original.pdf"), D.Pages, D.Items, style);
 
         [Fact]
+        public void LabelSeparatesNumberFromReasonCode()
+        {
+            // "1 3号" was easy to read as "13号": the number gets a prefix and the code brackets (ARCHITECTURE §9.1).
+            var shape = new Shape[] { new RectShape(10, 10, 20, 20) };
+            var withReason = new RedactionItem(Guid.NewGuid(), 0, shape, new Reason("3号", "公共安全情報", ""));
+            var unset = new RedactionItem(Guid.NewGuid(), 0, shape, null);
+            var emptyCode = new RedactionItem(Guid.NewGuid(), 0, shape, new Reason("", "", "自由記述のみ"));
+            Assert.Equal("No.1（3号）", HybridWriter.LabelText(1, withReason));
+            Assert.Equal("No.13", HybridWriter.LabelText(13, unset));
+            Assert.Equal("No.2", HybridWriter.LabelText(2, emptyCode));
+            Assert.Equal("No.7", HybridWriter.NumberLabel(7));
+        }
+
+        [Fact]
         public void AttachmentsRoundTripByteIdentical()
         {
             byte[] hyb = Pdf.Run(() => HybridWriter.Build(D.Td.Bytes, D.Json, D.Items, new HybridOptions { DrawText = false }));
