@@ -26,7 +26,8 @@ namespace Kuronuri.App
     /// </summary>
     public sealed class DocumentSession : IDisposable
     {
-        public const string AppVersion = "1.0.0";
+        /// <summary>Application version (Directory.Build.props), recorded in the review PDF's project JSON.</summary>
+        public static readonly string AppVersion = typeof(DocumentSession).Assembly.GetName().Version is { } v ? v.Major + "." + v.Minor + "." + v.Build : "0.0.0";
         public const long LargeOriginalBytes = 300L * 1024 * 1024;
 
         private DocumentSession(PdfiumWorker worker, PdfDoc doc, SourceKind kind, string path, byte[]? originalBytes,

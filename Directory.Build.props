@@ -1,0 +1,11 @@
+<Project>
+  <!-- Version and file properties shared by every project (shown in the EXE's Properties > Details). -->
+  <PropertyGroup>
+    <Version>0.9.0</Version>
+    <Authors>efukan</Authors>
+    <Company>efukan</Company>
+    <Copyright>Copyright (c) 2026 efukan. MIT License.</Copyright>
+    <Description>公文書くろぬり - PDF 黒塗り（墨消し）専用アプリ</Description>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+</Project>

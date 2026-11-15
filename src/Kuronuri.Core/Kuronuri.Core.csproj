@@ -11,7 +11,6 @@
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <RootNamespace>Kuronuri.Core</RootNamespace>
     <AssemblyName>Kuronuri.Core</AssemblyName>
-    <Version>1.0.0</Version>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
   <ItemGroup>

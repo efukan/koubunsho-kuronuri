@@ -13,11 +13,12 @@
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <RootNamespace>Kuronuri.App</RootNamespace>
     <AssemblyName>Kuronuri</AssemblyName>
-    <Version>1.0.0</Version>
     <Product>公文書くろぬり</Product>
+    <AssemblyTitle>公文書くろぬり</AssemblyTitle>
     <Deterministic>true</Deterministic>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>kuronuri.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Kuronuri.Core\Kuronuri.Core.csproj" />
