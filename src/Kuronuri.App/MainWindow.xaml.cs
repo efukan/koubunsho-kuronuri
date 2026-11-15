@@ -321,6 +321,7 @@ namespace Kuronuri.App
             catch (PdfLoadException ex) { Error(PdfLoadException.Describe(ex.Kind)); return; }
             catch (ReviewFileCorruptException) { Error("確認用PDFを開けませんでした。中に埋め込まれた原本が保存時の記録と一致しません（ファイルが壊れているか、書き換えられています）。\n\n別の確認用PDF、または元の原本PDFを開いてください。"); return; }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { Error("ファイルを開けませんでした。別のアプリで開いていないか、読み取りできる場所にあるか確認してください。"); return; }
+            catch (Exception ex) when (Recoverable(ex)) { UnexpectedError("PDFを開けませんでした", ex); return; }
             if (loaded == null) return;
             SetSession(loaded);
 
@@ -662,6 +663,7 @@ namespace Kuronuri.App
             catch (OriginalChangedException) { Error("確認用PDFに保存できませんでした。開いた後に原本のPDFが変更・移動されています。\n\n原本を元に戻すか、開き直してから作業してください。"); return false; }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { Error("保存できませんでした。書き込みできない場所か、ファイルが別のアプリで開かれています。\n\n別の場所を選ぶか、ファイルを閉じてからやり直してください。"); return false; }
             catch (Exception ex) when (ex is InvalidOperationException || ex is PdfLoadException) { Error("確認用PDFを作成できませんでした。もう一度やり直してください。"); return false; }
+            catch (Exception ex) when (Recoverable(ex)) { UnexpectedError("確認用PDFに保存できませんでした", ex); return false; }
 
             s.ReviewPath = dest;
             s.MarkSaved();
@@ -705,6 +707,7 @@ namespace Kuronuri.App
             catch (ForbiddenDestinationException) { Error("原本のPDFや、開いている確認用PDFには上書きできません。別の名前を指定してください。"); return; }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { Error("開示用PDFを作成できませんでした。書き込みできない場所か、同じ名前のファイルが別のアプリで開かれています。\n\n別の場所を選ぶか、ファイルを閉じてからやり直してください。"); return; }
             catch (InvalidOperationException) { Error("開示用PDFの作成中にエラーが発生しました。ファイルは作成されていません。もう一度やり直してください。"); return; }
+            catch (Exception ex) when (Recoverable(ex)) { UnexpectedError("開示用PDFを作成できませんでした", ex); return; }
             sw.Stop();
 
             string msg = pages.Count + " ページ・" + FormatBytes(res.FileBytes) + "・" + (sw.ElapsedMilliseconds / 1000.0).ToString("0.0") + " 秒。黒塗りが焼き込まれ、元の文字や情報が残っていないことを確認済みです。";
@@ -750,6 +753,7 @@ namespace Kuronuri.App
             Cursor = Cursors.Wait;
             try { dlg.PrintDocument(pag, PrintJob.Name); }
             catch (Exception ex) when (ex is InvalidOperationException || ex is System.Printing.PrintSystemException) { Error("印刷できませんでした。"); }
+            catch (Exception ex) when (Recoverable(ex)) { UnexpectedError("印刷できませんでした", ex); }
             finally
             {
                 pag.Release();

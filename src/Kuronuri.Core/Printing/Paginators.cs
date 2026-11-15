@@ -77,7 +77,7 @@ namespace Kuronuri.Core.Printing
                 using (var page = _doc.LoadPage(pageNumber))
                 {
                     double w = page.Width, h = page.Height;
-                    PageRenderer.PixelSize(w, h, Dpi, 60_000_000, out int wpx, out int hpx, out _);
+                    PageRenderer.PixelSize(w, h, Dpi, 60_000_000, out int wpx, out int hpx, out _, PageRenderer.MaxEncodableSide);
                     _buf.Ensure((long)wpx * hpx * 4);
                     PageRenderer.RenderFull(page.Handle, _buf.Ptr, wpx, hpx);
                     if (!AfterRender(pageNumber, _buf.Ptr, wpx, hpx, w, h)) throw new InvalidOperationException("burn verification failed");

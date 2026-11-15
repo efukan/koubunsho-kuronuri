@@ -52,6 +52,25 @@ namespace Kuronuri.Core.Tests
         }
 
         [Fact]
+        public void ExtremelyTallPageIsExportedWithinTheJpegSideLimit()
+        {
+            // 30 x 40000 pt: at 200 dpi the long side would be 111,112 px, beyond the JPEG limit, while the pixel count
+            // (about 9 MP) is far under the 60 MP budget. Found by the fuzz test (RobustnessTests).
+            var tall = TestPdfFactory.Build(new[] { new TestPdfFactory.PageSpec { MediaBox = new double[] { 0, 0, 30, 40000 }, NoMarkers = true } }, false);
+            var items = new List<RedactionItem> { new RedactionItem(Guid.NewGuid(), 0, new Shape[] { new RectShape(2, 30000, 20, 500) }, null) };
+            var pages = new[] { new PageInfo(30, 40000, 0) };
+            foreach (bool lossless in new[] { false, true })
+            {
+                var ms = new MemoryStream();
+                var rep = Pdf.Run(() => { using var doc = PdfDoc.FromBytes(tall.Bytes); return FinalExporter.Export(doc, items, RedactionStyle.Black, ms, new FinalExportOptions { TryLossless = lossless }); });
+                Assert.True(rep[0].HeightPx <= Kuronuri.Core.Rendering.PageRenderer.MaxEncodableSide && rep[0].WidthPx >= 1);
+                Assert.True(rep[0].EffectiveDpi < 200);   // reported to the user as a reduced page
+                Assert.Empty(OutputVerifier.VerifyStructure(ms.ToArray(), 1));
+                Assert.Empty(Pdf.Run(() => OutputVerifier.VerifyWithPdfium(ms.ToArray(), pages, items, RedactionStyle.Black)));
+            }
+        }
+
+        [Fact]
         public void ZeroPageFileIsNotAPdfWeOpen()
         {
             var ms = new MemoryStream();

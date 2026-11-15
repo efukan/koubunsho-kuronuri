@@ -58,7 +58,7 @@ namespace Kuronuri.Core.Export
                     try
                     {
                         double wd = PdfiumNative.FPDF_GetPageWidthF(page), hd = PdfiumNative.FPDF_GetPageHeightF(page);
-                        PageRenderer.PixelSize(wd, hd, opt.Dpi, opt.MaxPixelsPerPage, out int wpx, out int hpx, out double eff);
+                        PageRenderer.PixelSize(wd, hd, opt.Dpi, opt.MaxPixelsPerPage, out int wpx, out int hpx, out double eff, PageRenderer.MaxEncodableSide);
                         buf.Ensure((long)wpx * hpx * 4);
                         PageRenderer.RenderFull(page, buf.Ptr, wpx, hpx);
 

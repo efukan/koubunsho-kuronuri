@@ -40,7 +40,15 @@ namespace Kuronuri.Core.Rendering
         /// <summary>The same flags are used for screen, final output and printing.</summary>
         public const int RenderFlags = PdfiumNative.FPDF_ANNOT;
 
-        public static void PixelSize(double wd, double hd, double dpi, long maxPixels, out int wpx, out int hpx, out double effectiveDpi)
+        /// <summary>
+        /// Largest side the in-box JPEG encoder accepts (the format limit is 65,535). Pages with an extreme aspect ratio can
+        /// stay under the pixel budget and still exceed it, so every encoded rendering also limits the longer side.
+        /// </summary>
+        public const int MaxEncodableSide = 65_000;
+
+        /// <param name="maxSide">Upper bound for either side (use <see cref="MaxEncodableSide"/> for anything that is encoded).</param>
+        public static void PixelSize(double wd, double hd, double dpi, long maxPixels, out int wpx, out int hpx, out double effectiveDpi,
+            int maxSide = int.MaxValue)
         {
             double scale = dpi / 72.0;
             wpx = Math.Max(1, (int)Math.Ceiling(wd * scale - 1e-6));
@@ -50,6 +58,12 @@ namespace Kuronuri.Core.Rendering
                 scale *= Math.Sqrt((double)maxPixels / ((double)wpx * hpx));
                 wpx = Math.Max(1, (int)Math.Floor(wd * scale));
                 hpx = Math.Max(1, (int)Math.Floor(hd * scale));
+            }
+            if (wpx > maxSide || hpx > maxSide)
+            {
+                scale *= (double)maxSide / Math.Max(wpx, hpx);
+                wpx = Math.Max(1, Math.Min(maxSide, (int)Math.Floor(wd * scale)));
+                hpx = Math.Max(1, Math.Min(maxSide, (int)Math.Floor(hd * scale)));
             }
             effectiveDpi = scale * 72.0;
         }

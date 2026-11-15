@@ -91,6 +91,23 @@ namespace Kuronuri.App
 
         private void Help_Executed(object sender, ExecutedRoutedEventArgs e) => HelpWindow.ShowFor(this);
 
+        // ================================================================== unexpected errors in user commands (ARCHITECTURE §13)
+
+        /// <summary>
+        /// Open / save / create / print / search do not change the redaction items, so an unexpected failure there is
+        /// reported and the user keeps working instead of losing everything. Only states the runtime cannot recover from
+        /// are left to the global handler.
+        /// </summary>
+        private static bool Recoverable(Exception ex) =>
+            !(ex is StackOverflowException || ex is AccessViolationException || ex is System.Threading.ThreadAbortException);
+
+        private void UnexpectedError(string what, Exception ex)
+        {
+            bool memory = ex is OutOfMemoryException || ex is InsufficientExecutionStackException;
+            Error(what + "。\n種別: " + ex.GetType().Name + "\n\n作業中の黒塗り箇所はそのまま残っています。" +
+                  (memory ? "メモリが不足しています。ほかのアプリを閉じてからやり直してください。" : "もう一度やり直してください。"));
+        }
+
         // ================================================================== style dropdown
 
         private void StyleMenu_Click(object sender, RoutedEventArgs e)
@@ -414,6 +431,7 @@ namespace Kuronuri.App
                 }, token));
             }
             catch (OperationCanceledException) { searchStatus.Text = "検索を中止しました。"; return; }
+            catch (Exception ex) when (Recoverable(ex)) { UnexpectedError("検索できませんでした", ex); return; }
 
             ClearSearch();
             var items = s.Items.Items.ToList();

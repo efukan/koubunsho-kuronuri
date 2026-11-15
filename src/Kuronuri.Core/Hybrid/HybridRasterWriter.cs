@@ -104,7 +104,7 @@ namespace Kuronuri.Core.Hybrid
                     try
                     {
                         double wd = N.FPDF_GetPageWidthF(page), hd = N.FPDF_GetPageHeightF(page);
-                        PageRenderer.PixelSize(wd, hd, dpi, 60_000_000, out int wpx, out int hpx, out _);
+                        PageRenderer.PixelSize(wd, hd, dpi, 60_000_000, out int wpx, out int hpx, out _, PageRenderer.MaxEncodableSide);
                         buf.Ensure((long)wpx * hpx * 4);
                         PageRenderer.RenderFull(page, buf.Ptr, wpx, hpx);
                         bool color = JpegCodec.DetectColor(buf.Ptr, (long)wpx * hpx);
