@@ -68,6 +68,7 @@ namespace Kuronuri.App
 
         private static string ToolHint(Tool t) => t switch
         {
+            Tool.Hand => "てのひら: ドラッグで表示位置を動かします（黒塗りは変わりません）",
             Tool.Select => "選択: クリックで選択・ドラッグで移動。空き場所をドラッグで範囲選択。矢印キーで微調整",
             Tool.Rect => "矩形: ドラッグで黒塗りの矩形を作ります",
             Tool.Text => "文字: 文字の上をドラッグすると、その文字を行ごとに覆います",

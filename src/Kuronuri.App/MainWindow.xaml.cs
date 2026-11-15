@@ -33,7 +33,7 @@ namespace Kuronuri.App
         private readonly string _settingsPath;
         private DocumentSession? _session;
         private readonly ViewState _view = new ViewState();
-        private Tool _tool = Tool.Select;
+        private Tool _tool = Tool.Hand;   // the default: looking around never changes a redaction (ARCHITECTURE §11.2)
         private double _brushPt = ShapeOps.MmToPt(4);
         private Reason? _currentReason;
         private Guid? _highlight;
@@ -183,10 +183,12 @@ namespace Kuronuri.App
             rightCanvas.CancelDrag();
             _tool = tool;
             _session?.Grouper.Close();
-            var target = tool switch { Tool.Rect => toolRect, Tool.Text => toolText, Tool.Freehand => toolFree, Tool.Eraser => toolEraser, _ => toolSelect };
+            var target = tool switch { Tool.Select => toolSelect, Tool.Rect => toolRect, Tool.Text => toolText, Tool.Freehand => toolFree, Tool.Eraser => toolEraser, _ => toolHand };
             if (tool == Tool.Text && _session != null) PreloadText(_session.BaseOf(_view.PageIndex));
             stHint.Text = ToolHint(tool);
             if (target.IsChecked != true) target.IsChecked = true;
+            leftCanvas.Cursor = null;   // the original pane shows the hand only with the hand tool; refreshed on the next move
+            rightCanvas.Cursor = null;
             rightCanvas.InvalidateVisual();
         }
 
@@ -269,6 +271,7 @@ namespace Kuronuri.App
                 return;
             switch (key)
             {
+                case Key.H: SetTool(Tool.Hand); break;
                 case Key.V: SetTool(Tool.Select); break;
                 case Key.R: SetTool(Tool.Rect); break;
                 case Key.B: SetTool(Tool.Freehand); break;

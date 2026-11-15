@@ -97,7 +97,8 @@
         </StackPanel>
         <Border Style="{StaticResource BarSeparator}" />
         <StackPanel Orientation="Horizontal" Margin="0,2">
-          <t:IconRadio x:Name="toolSelect" Icon="&#xE8B0;" GroupName="tool" IsChecked="True" Checked="Tool_Checked" Tag="Select" ToolTip="選択 (V): 箇所をクリックで選び、ドラッグで移動・大きさ変更" />
+          <t:IconRadio x:Name="toolHand" Icon="&#xE815;" GroupName="tool" IsChecked="True" Checked="Tool_Checked" Tag="Hand" ToolTip="てのひら (H): ドラッグで表示位置を動かす（黒塗りは変えない）" />
+          <t:IconRadio x:Name="toolSelect" Icon="&#xE8B0;" GroupName="tool" Checked="Tool_Checked" Tag="Select" ToolTip="選択 (V): 箇所をクリックで選び、ドラッグで移動・大きさ変更" />
           <t:IconRadio x:Name="toolRect" Icon="&#xE739;" GroupName="tool" Checked="Tool_Checked" Tag="Rect" ToolTip="矩形 (R): ドラッグして四角く黒塗り" />
           <t:IconRadio x:Name="toolText" Icon="&#xE8D2;" GroupName="tool" Checked="Tool_Checked" Tag="Text" ToolTip="文字 (T): 文字の上をドラッグすると、その文字を行ごとに覆います" />
           <t:IconRadio x:Name="toolFree" Icon="&#xE76D;" GroupName="tool" Checked="Tool_Checked" Tag="Freehand" ToolTip="手書き (B): なぞって黒塗り（近くの線は1つの箇所にまとまります）" />

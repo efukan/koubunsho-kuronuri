@@ -160,3 +160,8 @@
 - [x] v0.9.1 のタグを push し、GitHub Actions でビルドしたリリースを公開する（2026-11-15。ZIP の SHA-256 一致・起動を確認）。
 - [ ] SignPath Foundation に申請する（https://signpath.org/apply.html）。
 - [ ] 承認後: release.yml に SignPath の署名ステップを追加（`Kuronuri.exe`・`Kuronuri.Core.dll` のみ）。README の方針に「Free code signing provided by SignPath.io, certificate by SignPath Foundation」を記載。
+
+## M18 てのひらツール（§11.2）
+
+- [x] てのひらツール（H）を追加し、起動時の既定にする。左ドラッグで表示位置を移動（原本側のペインでも。縮小表示中もポインタに追従）。箇所には触れない。カーソルは開いた手／握った手を自前で描き `CreateIconIndirect` で作る（一時ファイルを使わない）。
+- 結果: ビルド・全 103 テスト合格・禁止事項の検査 OK・起動を確認。実際のドラッグ操作は手元で未確認。

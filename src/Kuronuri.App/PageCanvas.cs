@@ -17,7 +17,7 @@ using Kuronuri.Core.Text;
 
 namespace Kuronuri.App
 {
-    public enum Tool { Select, Rect, Text, Freehand, Eraser }
+    public enum Tool { Hand, Select, Rect, Text, Freehand, Eraser }
 
     /// <summary>What a page canvas needs from the window.</summary>
     public interface IEditorHost
@@ -365,6 +365,7 @@ namespace Kuronuri.App
         private enum DragKind { None, Pan, Move, Resize, Rect, Stroke, Marquee, TextSel }
         private DragKind _drag;
         private Point _panLast;
+        private MouseButton _panButton;
         private Point2 _moveStart;
         private double _moveDx, _moveDy;
         private RedactionItem? _resizeItem;
@@ -389,9 +390,13 @@ namespace Kuronuri.App
             var s = Host?.Session;
             if (s == null || _drag != DragKind.None) return;
             Point pos = e.GetPosition(this);
-            if (e.ChangedButton == MouseButton.Middle)
+            // Middle drag pans with any tool; with the hand tool the left button does too, in either pane.
+            bool handDrag = e.ChangedButton == MouseButton.Left && Host!.Tool == Tool.Hand;
+            if (e.ChangedButton == MouseButton.Middle || handDrag)
             {
-                _drag = DragKind.Pan; _panLast = pos; CaptureMouse(); e.Handled = true; Cursor = Cursors.SizeAll;
+                if (Editable) Focus();
+                _drag = DragKind.Pan; _panButton = e.ChangedButton; _panLast = pos; CaptureMouse(); e.Handled = true;
+                Cursor = handDrag ? HandCursors.Closed(DpiScale) : Cursors.SizeAll;
                 return;
             }
             if (!Editable) return;
@@ -493,9 +498,12 @@ namespace Kuronuri.App
             switch (_drag)
             {
                 case DragKind.Pan:
-                    Host.View.ScrollBy(_panLast.X - pos.X, _panLast.Y - pos.Y);
+                {
+                    double f = PaneScale();   // the original pane may show the view scaled down: follow the pointer there too
+                    Host.View.ScrollBy((_panLast.X - pos.X) / f, (_panLast.Y - pos.Y) / f);
                     _panLast = pos;
                     return;
+                }
                 case DragKind.Move:
                 {
                     var p = ToPage(pos);
@@ -540,8 +548,9 @@ namespace Kuronuri.App
 
         private void UpdateCursor(DocumentSession s, Point pos)
         {
-            if (!Editable) { Cursor = null; return; }
             var tool = Host!.Tool;
+            if (tool == Tool.Hand) { Cursor = HandCursors.Open(DpiScale); return; }
+            if (!Editable) { Cursor = null; return; }
             if (tool == Tool.Text)
             {
                 var t = Host.TextFor(BasePage);
@@ -586,12 +595,13 @@ namespace Kuronuri.App
             var s = Host?.Session;
             var kind = _drag;
             if (kind == DragKind.None) return;
-            if (kind == DragKind.Pan && e.ChangedButton != MouseButton.Middle) return;
+            if (kind == DragKind.Pan && e.ChangedButton != _panButton) return;
             if (kind != DragKind.Pan && e.ChangedButton != MouseButton.Left) return;
             _drag = DragKind.None;
             ReleaseMouseCapture();
             Cursor = null;
             if (s == null) return;
+            if (kind == DragKind.Pan) { UpdateCursor(s, e.GetPosition(this)); return; }
             var v = Host!.View;
             switch (kind)
             {
