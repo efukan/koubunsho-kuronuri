@@ -56,7 +56,7 @@ namespace Kuronuri.Core.Rendering
             using (var page = _doc.LoadPage(key.Page))
             {
                 _buf.Ensure(key.Bytes);
-                PageRenderer.RenderRegion(page.Handle, _buf.Ptr, key.FullW, key.FullH, key.X, key.Y, key.W, key.H);
+                PageRenderer.RenderRegion(page.Handle, _buf.Ptr, key.FullW, key.FullH, key.X, key.Y, key.W, key.H, key.Rotation);
                 var bmp = BitmapSource.Create(key.W, key.H, 96, 96, PixelFormats.Bgr32, null, _buf.Ptr, checked((int)key.Bytes), key.W * 4);
                 bmp.Freeze();
                 return bmp;

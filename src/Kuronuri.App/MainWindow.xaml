@@ -30,6 +30,12 @@
     <CommandBinding Command="local:Cmd.PrevUnset" Executed="PrevUnset_Executed" CanExecute="HasDoc_CanExecute" />
     <CommandBinding Command="local:Cmd.Find" Executed="Find_Executed" CanExecute="HasDoc_CanExecute" />
     <CommandBinding Command="local:Cmd.Help" Executed="Help_Executed" />
+    <CommandBinding Command="local:Cmd.RotateRight" Executed="RotateRight_Executed" CanExecute="PageCmd_CanExecute" />
+    <CommandBinding Command="local:Cmd.RotateLeft" Executed="RotateLeft_Executed" CanExecute="PageCmd_CanExecute" />
+    <CommandBinding Command="local:Cmd.Rotate180" Executed="Rotate180_Executed" CanExecute="PageCmd_CanExecute" />
+    <CommandBinding Command="local:Cmd.ToggleExclude" Executed="ToggleExclude_Executed" CanExecute="PageCmd_CanExecute" />
+    <CommandBinding Command="local:Cmd.MovePageUp" Executed="MovePageUp_Executed" CanExecute="MovePageUp_CanExecute" />
+    <CommandBinding Command="local:Cmd.MovePageDown" Executed="MovePageDown_Executed" CanExecute="MovePageDown_CanExecute" />
   </Window.CommandBindings>
   <Window.InputBindings>
     <KeyBinding Command="local:Cmd.Open" Gesture="Ctrl+O" />
@@ -56,6 +62,8 @@
     <KeyBinding Command="local:Cmd.PrevUnset" Gesture="Shift+F8" />
     <KeyBinding Command="local:Cmd.Find" Gesture="Ctrl+F" />
     <KeyBinding Command="local:Cmd.Help" Gesture="F1" />
+    <KeyBinding Command="local:Cmd.RotateRight" Gesture="Ctrl+R" />
+    <KeyBinding Command="local:Cmd.RotateLeft" Gesture="Ctrl+Shift+R" />
   </Window.InputBindings>
 
   <DockPanel>
@@ -106,11 +114,25 @@
           <t:IconButton Icon="&#xE71B;" Command="local:Cmd.Merge" ToolTip="結合 (Ctrl+G): 同じページの複数の箇所を1つにまとめます" />
           <t:IconButton Icon="&#xE8C6;" Command="local:Cmd.Split" ToolTip="分割 (Ctrl+Shift+G): 1つの箇所を図形ごとに分けます" />
           <t:IconButton Icon="&#xE74D;" Command="local:Cmd.Delete" ToolTip="削除 (Delete): 選んだ箇所を消す" />
-          <t:IconButton Icon="&#xE7BA;" Label="次の未設定" Command="local:Cmd.NextUnset" ToolTip="理由が設定されていない箇所へ順に移動 (F8 / Shift+F8 で前へ)" />
+          <t:IconButton Icon="&#xE7BA;" Command="local:Cmd.NextUnset" ToolTip="次の未設定 (F8): 理由が設定されていない箇所へ順に移動（Shift+F8 で前へ）" />
           <t:IconButton Icon="&#xE721;" Label="検索" Command="local:Cmd.Find" ToolTip="語句や電話番号などを検索して、まとめて黒塗りにします (Ctrl+F)" />
         </StackPanel>
         <Border Style="{StaticResource BarSeparator}" />
         <StackPanel Orientation="Horizontal" Margin="0,2">
+          <t:IconButton Icon="&#xE7C3;" Label="ページ" IsDropDown="True" ToolTip="表示中のページの回転・除外・並べ替え">
+            <t:IconButton.ContextMenu>
+              <ContextMenu Opened="PageMenu_Opened">
+                <MenuItem Header="右に90°回転" Command="local:Cmd.RotateRight" InputGestureText="Ctrl+R" />
+                <MenuItem Header="左に90°回転" Command="local:Cmd.RotateLeft" InputGestureText="Ctrl+Shift+R" />
+                <MenuItem Header="180°回転" Command="local:Cmd.Rotate180" />
+                <Separator />
+                <MenuItem x:Name="excludeMenuBar" Header="開示用PDFから除く" Command="local:Cmd.ToggleExclude" />
+                <Separator />
+                <MenuItem Header="前へ移動" Command="local:Cmd.MovePageUp" />
+                <MenuItem Header="後ろへ移動" Command="local:Cmd.MovePageDown" />
+              </ContextMenu>
+            </t:IconButton.ContextMenu>
+          </t:IconButton>
           <t:IconButton x:Name="styleButton" Icon="&#xE790;" Label="黒塗り" IsDropDown="True" ToolTip="スタイル（文書全体に適用）">
             <t:IconButton.ContextMenu>
               <ContextMenu>
@@ -194,8 +216,23 @@
       </Grid.ColumnDefinitions>
 
       <ListBox x:Name="thumbList" Grid.Column="0" SelectionMode="Single" SelectionChanged="Thumb_SelectionChanged"
+               AllowDrop="True" PreviewMouseLeftButtonDown="Thumb_PreviewMouseLeftButtonDown" PreviewMouseMove="Thumb_PreviewMouseMove"
+               DragOver="Thumb_DragOver" Drop="Thumb_Drop" ContextMenuOpening="Thumb_ContextMenuOpening"
+               ToolTip="ドラッグで並べ替え・右クリックで回転や除外"
                VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel"
                ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="Transparent" BorderThickness="0">
+        <ListBox.ContextMenu>
+          <ContextMenu>
+            <MenuItem Header="右に90°回転" Command="local:Cmd.RotateRight" InputGestureText="Ctrl+R" />
+            <MenuItem Header="左に90°回転" Command="local:Cmd.RotateLeft" InputGestureText="Ctrl+Shift+R" />
+            <MenuItem Header="180°回転" Command="local:Cmd.Rotate180" />
+            <Separator />
+            <MenuItem x:Name="excludeMenuThumb" Header="開示用PDFから除く" Command="local:Cmd.ToggleExclude" />
+            <Separator />
+            <MenuItem Header="前へ移動" Command="local:Cmd.MovePageUp" />
+            <MenuItem Header="後ろへ移動" Command="local:Cmd.MovePageDown" />
+          </ContextMenu>
+        </ListBox.ContextMenu>
         <ListBox.ItemsPanel>
           <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
         </ListBox.ItemsPanel>
@@ -203,11 +240,15 @@
           <DataTemplate DataType="{x:Type local:ThumbVM}">
             <StackPanel Margin="4">
               <Grid HorizontalAlignment="Center">
-                <Border BorderBrush="{DynamicResource Stroke.Card}" BorderThickness="1" Background="White">
+                <Border x:Name="pageCard" BorderBrush="{DynamicResource Stroke.Card}" BorderThickness="1" Background="White">
                   <Grid>
                     <Image Source="{Binding Image}" Width="120" Height="{Binding HeightDip}" Stretch="Fill" />
                     <Image Source="{Binding Overlay}" Width="120" Height="{Binding HeightDip}" Stretch="Fill" />
                   </Grid>
+                </Border>
+                <Border x:Name="excludedTag" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="-4,0,0,-4" CornerRadius="4" Padding="6,1"
+                        Background="#FFC42B1C" Visibility="Collapsed" ToolTip="開示用PDFに含めないページです">
+                  <TextBlock Text="除外" Foreground="White" FontWeight="Bold" FontSize="11" />
                 </Border>
                 <Border x:Name="badge" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-4,-6,0" MinWidth="20" Height="20"
                         CornerRadius="10" Padding="5,0" Background="#FF0054A6" Visibility="Collapsed" ToolTip="{Binding BadgeToolTip}">
@@ -219,6 +260,10 @@
             <DataTemplate.Triggers>
               <DataTrigger Binding="{Binding HasItems}" Value="True">
                 <Setter TargetName="badge" Property="Visibility" Value="Visible" />
+              </DataTrigger>
+              <DataTrigger Binding="{Binding Excluded}" Value="True">
+                <Setter TargetName="excludedTag" Property="Visibility" Value="Visible" />
+                <Setter TargetName="pageCard" Property="Opacity" Value="0.45" />
               </DataTrigger>
               <DataTrigger Binding="{Binding HasUnset}" Value="True">
                 <Setter TargetName="badge" Property="Background" Value="#FFD66200" />
@@ -243,6 +288,10 @@
         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
         <Border Grid.ColumnSpan="2" Padding="10,4"><TextBlock Foreground="{DynamicResource Text.Secondary}" FontSize="12"><Run Text="黒塗りプレビュー（編集）" Foreground="{DynamicResource Text.Primary}" FontWeight="SemiBold" /><Run Text="   Space 押下中は透過" /></TextBlock></Border>
         <local:PageCanvas x:Name="rightCanvas" Grid.Row="1" />
+        <Border x:Name="excludedBanner" Grid.Row="1" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,8,0,0" Padding="12,5" CornerRadius="6"
+                Background="#E6C42B1C" Visibility="Collapsed" IsHitTestVisible="False">
+          <TextBlock Foreground="White" FontWeight="SemiBold" Text="このページは開示用PDFに含めません（確認用PDFには残ります）" />
+        </Border>
         <ScrollBar x:Name="rightV" Grid.Row="1" Grid.Column="1" Orientation="Vertical" Scroll="ScrollBar_Scroll" />
         <ScrollBar x:Name="rightH" Grid.Row="2" Orientation="Horizontal" Scroll="ScrollBar_Scroll" />
       </Grid>

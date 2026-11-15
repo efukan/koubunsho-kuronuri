@@ -37,13 +37,13 @@ namespace Kuronuri.Core.Tests
             Assert.Equal(tricky.Items[0].Id, back.Items[0].Id);
             Assert.Equal(j1, ProjectJson.Serialize(back, "1.0.0"));
             string text = Encoding.UTF8.GetString(j1);
-            Assert.StartsWith("{\"app\":\"kuronuri\",\"schema\":1,", text);
+            Assert.StartsWith("{\"app\":\"kuronuri\",\"schema\":2,", text);
             Assert.Contains("法人等情報", text);
         }
 
         [Theory]
         [InlineData("{\"app\":\"other\",\"schema\":1,\"appVersion\":\"\",\"original\":{\"sha256\":\"\",\"length\":0,\"fileName\":\"\"},\"pages\":[],\"style\":\"black\",\"items\":[]}")]
-        [InlineData("{\"app\":\"kuronuri\",\"schema\":2,\"appVersion\":\"\",\"original\":{\"sha256\":\"\",\"length\":0,\"fileName\":\"\"},\"pages\":[],\"style\":\"black\",\"items\":[]}")]
+        [InlineData("{\"app\":\"kuronuri\",\"schema\":3,\"appVersion\":\"\",\"original\":{\"sha256\":\"\",\"length\":0,\"fileName\":\"\"},\"pages\":[],\"style\":\"black\",\"items\":[]}")]
         [InlineData("{\"app\":\"kuronuri\",\"schema\":1,\"appVersion\":\"\",\"original\":{\"sha256\":\"\",\"length\":0,\"fileName\":\"\"},\"pages\":[],\"style\":\"black\",\"items\":[{\"id\":\"73c1cf7a-ce1c-4888-bde7-35499e9fc79a\",\"page\":0,\"reason\":null,\"shapes\":[{\"t\":\"rect\",\"x\":1,\"y\":2,\"w\":3,\"h\":4}]}]}")]
         [InlineData("{\"app\":\"kuronuri\",\"schema\":1,\"appVersion\":\"\",\"original\":{\"sha256\":\"\",\"length\":0,\"fileName\":\"\"},\"pages\":[{\"w\":1,\"h\":1,\"rot\":0}],\"style\":\"black\",\"items\":[{\"id\":\"x\",\"page\":0,\"reason\":null,\"shapes\":[{\"t\":\"circle\"}]}]}")]
         public void RejectsForeignOrInvalidData(string json)

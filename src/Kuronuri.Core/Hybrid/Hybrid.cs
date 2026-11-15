@@ -99,15 +99,22 @@ namespace Kuronuri.Core.Hybrid
         /// <summary>Top of the label in display space: above the item, or just inside it when there is no room.</summary>
         public static double LabelTop(double itemTop) => itemTop >= 12 ? itemTop - 11 : itemTop + 1;
 
-        public static byte[] Build(byte[] original, byte[] projectJson, IReadOnlyList<RedactionItem> items, HybridOptions opt)
+        public const string ExcludedNote = "このページは開示用PDFに含めません";
+
+        /// <param name="layout">Page order / rotation / exclusion (ARCHITECTURE §4.4). Pages are imported in that order, the user
+        /// rotation is added to /Rotate, and overlays are drawn in view coordinates. Excluded pages stay, with a note.</param>
+        public static byte[] Build(byte[] original, byte[] projectJson, IReadOnlyList<RedactionItem> items, HybridOptions opt, PageLayout? layout = null)
         {
             using (var src = PdfDoc.FromBytes(original))
             using (var dst = PdfDoc.CreateNew())
             {
-                if (!N.FPDF_ImportPages(dst.Handle, src.Handle, null, 0)) throw new InvalidOperationException("FPDF_ImportPages failed");
+                var basePages = Export.FinalExporter.ReadPageInfos(src);
+                var plan = Export.OutputPlan.Build(basePages, items, layout, includeExcluded: true);
+                string range = string.Join(",", plan.Pages.Select(p => (p.BasePage + 1).ToString(CultureInfo.InvariantCulture)));
+                if (!N.FPDF_ImportPages(dst.Handle, src.Handle, range, 0)) throw new InvalidOperationException("FPDF_ImportPages failed");
                 int n = dst.PageCount;
                 if (n != src.PageCount) throw new InvalidOperationException("imported page count mismatch");
-                var ordered = ShapeMath.InDisplayOrder(items);
+                var ordered = plan.Items.ToList();   // view coordinates, output page index, display order
                 var wm = opt.DrawText ? TextOutline.Build(opt.Watermark, 100, true) : null;
                 IntPtr wmX = IntPtr.Zero; double wmW = 0, wmH = 0;
                 if (wm != null && opt.SharedWatermark) wmX = CreateWatermarkXObject(dst, wm, out wmW, out wmH);
@@ -120,8 +127,28 @@ namespace Kuronuri.Core.Hybrid
                     if (page == IntPtr.Zero) throw new InvalidOperationException("page load failed");
                     try
                     {
+                        var op = plan.Pages[i];
                         var g = PageGeometry.FromPage(page);
+                        if (op.Rotation != 0)
+                        {
+                            // The user rotation is added to /Rotate; the geometry then describes the page as it will be displayed.
+                            int r = (g.Rotation + op.Rotation) & 3;
+                            N.FPDFPage_SetRotation(page, r);
+                            g = new PageGeometry(g.X0, g.Y0, g.X1, g.Y1, r, op.Width, op.Height);
+                        }
                         double[] m = CoordMap.DisplayToUserMatrix(g);
+                        if (op.Excluded && opt.DrawText)
+                        {
+                            var note = TextOutline.Build(ExcludedNote, 14, true);
+                            double nx = Math.Max(4, (op.Width - note.Bounds.Width) / 2), ny = 6;
+                            IntPtr np = TextOutline.ToPdfiumPath(note, p => ToUser(m, nx + p.X, ny + p.Y));
+                            if (np != IntPtr.Zero)
+                            {
+                                N.FPDFPath_SetDrawMode(np, N.FPDF_FILLMODE_WINDING, false);
+                                N.FPDFPageObj_SetFillColor(np, 200, 0, 0, 255);
+                                N.FPDFPage_InsertObject(page, np);
+                            }
+                        }
                         for (int k = 0; k < ordered.Count; k++)
                         {
                             var item = ordered[k];

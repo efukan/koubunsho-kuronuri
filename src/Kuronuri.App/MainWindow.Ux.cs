@@ -53,7 +53,7 @@ namespace Kuronuri.App
             return t;
         }
 
-        public IReadOnlyList<RectShape> SearchHighlight => _searchHighlightPage == _view.PageIndex ? _searchHighlight : new RectShape[0];
+        public IReadOnlyList<RectShape> SearchHighlight => _session != null && _searchHighlightPage == CurrentBase ? _searchHighlight : new RectShape[0];   // base page / coordinates
 
         private void PreloadText(int page)
         {
@@ -149,10 +149,16 @@ namespace Kuronuri.App
         {
             var s = _session;
             if (s == null) return false;
-            var sel = s.SelectedItems.Where(i => i.PageIndex == _view.PageIndex).ToList();
+            int b = CurrentBase;
+            var pg = s.Pages[b];
+            // Arrow keys move in screen directions: turn the view delta into a base delta (ARCHITECTURE §2.4).
+            var o = Kuronuri.Core.Geometry.CoordMap.FromView(s.Layout.RotationOf(b), pg.Width, pg.Height, new Point2(0, 0));
+            var d = Kuronuri.Core.Geometry.CoordMap.FromView(s.Layout.RotationOf(b), pg.Width, pg.Height, new Point2(dx, dy));
+            dx = d.X - o.X; dy = d.Y - o.Y;
+            var sel = s.SelectedItems.Where(i => i.PageIndex == b).ToList();
             if (sel.Count == 0) return false;
-            var union = new RedactionItem(Guid.Empty, _view.PageIndex, sel.SelectMany(i => i.Shapes).ToList(), null);
-            (dx, dy) = ShapeOps.ClampDelta(union, dx, dy, _view.PageWidthPt, _view.PageHeightPt);
+            var union = new RedactionItem(Guid.Empty, b, sel.SelectMany(i => i.Shapes).ToList(), null);
+            (dx, dy) = ShapeOps.ClampDelta(union, dx, dy, pg.Width, pg.Height);
             var cmd = EditOps.MoveMany(sel, dx, dy);
             if (cmd != null) Execute(cmd);
             return true;
@@ -240,7 +246,7 @@ namespace Kuronuri.App
         {
             var s = _session;
             if (s == null) return;
-            var ordered = ShapeMath.InDisplayOrder(s.Items.Items);
+            var ordered = Kuronuri.Core.Geometry.CoordMap.InDisplayOrder(s.Items.Items, s.Layout, s.Pages);
             var unset = ordered.Where(i => i.Reason == null).ToList();
             if (unset.Count == 0) { ShowHint("理由未設定の箇所はありません"); return; }
             int cur = -1;
@@ -358,9 +364,9 @@ namespace Kuronuri.App
             for (int p = 0; p < _thumbs.Count; p++)
             {
                 var vm = _thumbs[p];
-                var items = byPage.TryGetValue(p, out var list) ? list : none;
+                var items = byPage.TryGetValue(vm.BasePage, out var list) ? list : none;   // thumbnails are in view order
                 if (items.Count == 0 && vm.Count == 0) continue;
-                vm.SetItems(items, s.Pages[p].Width, s.Pages[p].Height);
+                vm.SetItems(items);
             }
         }
 
@@ -435,7 +441,7 @@ namespace Kuronuri.App
 
             ClearSearch();
             var items = s.Items.Items.ToList();
-            foreach (var h in result.Hits) _searchRows.Add(new SearchHitVM(h, TextSearch.IsCovered(h, items)));
+            foreach (var h in result.Hits) _searchRows.Add(new SearchHitVM(h, TextSearch.IsCovered(h, items), s.ViewOf(h.Page) + 1));
             int covered = _searchRows.Count(r => r.Covered);
             if (result.TextChars == 0)
                 searchStatus.Text = "この文書には文字情報がありません（スキャン画像の可能性があります）。検索は使えないため、目視で黒塗りしてください。";
@@ -468,9 +474,9 @@ namespace Kuronuri.App
             if (searchList.SelectedItem is not SearchHitVM row) return;
             _searchHighlight = row.Hit.Rects;
             _searchHighlightPage = row.Hit.Page;
-            _view.GoToPage(row.Hit.Page);
+            _view.GoToPage(_session!.ViewOf(row.Hit.Page));
             var b = ShapeOps.Box(new RedactionItem(Guid.Empty, row.Hit.Page, row.Hit.Rects.Cast<Shape>().ToList(), null));
-            _view.CenterOn((b.L + b.R) / 2, (b.T + b.B) / 2);
+            CenterOnBase(row.Hit.Page, b);
             rightCanvas.InvalidateVisual();
         }
 

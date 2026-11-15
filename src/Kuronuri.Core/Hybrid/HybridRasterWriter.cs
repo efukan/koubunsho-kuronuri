@@ -66,15 +66,16 @@ namespace Kuronuri.Core.Hybrid
         public const int DefaultQuality = 75;
 
         public static void Build(PdfDoc src, byte[] original, byte[] projectJson, IReadOnlyList<RedactionItem> items, Stream output,
-            double dpi = DefaultDpi, int quality = DefaultQuality, HybridOptions? opt = null)
+            double dpi = DefaultDpi, int quality = DefaultQuality, HybridOptions? opt = null, PageLayout? layout = null)
         {
             opt ??= new HybridOptions();
             string F(double v) => MiniPdfWriter.F(v);
-            int n = src.PageCount;
+            var plan = OutputPlan.Build(FinalExporter.ReadPageInfos(src), items, layout, includeExcluded: true);
+            int n = plan.Pages.Count;
             var w = new MiniPdfWriter(output);
             int catalog = w.Reserve(), pages = w.Reserve();
             var kids = new StringBuilder();
-            var ordered = ShapeMath.InDisplayOrder(items);
+            var ordered = plan.Items.ToList();   // view coordinates, output page index, display order
 
             // Shared watermark form: drawn once in its own box (y up), placed on every page with a cm matrix.
             int wmForm = 0; double wmW = 0, wmH = 0, wmGeoW = 0;
@@ -99,14 +100,15 @@ namespace Kuronuri.Core.Hybrid
             {
                 for (int i = 0; i < n; i++)
                 {
-                    IntPtr page = N.FPDF_LoadPage(src.Handle, i);
+                    var op = plan.Pages[i];
+                    IntPtr page = N.FPDF_LoadPage(src.Handle, op.BasePage);
                     if (page == IntPtr.Zero) throw new InvalidOperationException("page load failed: " + (i + 1));
                     try
                     {
-                        double wd = N.FPDF_GetPageWidthF(page), hd = N.FPDF_GetPageHeightF(page);
+                        double wd = op.Width, hd = op.Height;   // view size (user rotation applied)
                         PageRenderer.PixelSize(wd, hd, dpi, 60_000_000, out int wpx, out int hpx, out _, PageRenderer.MaxEncodableSide);
                         buf.Ensure((long)wpx * hpx * 4);
-                        PageRenderer.RenderFull(page, buf.Ptr, wpx, hpx);
+                        PageRenderer.RenderFull(page, buf.Ptr, wpx, hpx, op.Rotation);
                         bool color = JpegCodec.DetectColor(buf.Ptr, (long)wpx * hpx);
                         JpegCodec.Encode(buf.Ptr, gray, wpx, hpx, color, quality, jpeg);
                         int len = (int)jpeg.Length, comps = JpegCodec.Components(jpeg.GetBuffer(), len);
@@ -141,6 +143,14 @@ namespace Kuronuri.Core.Hybrid
                                 PdfPathOps.Append(ops, label, p => new Point(bb.L + p.X, hd - (top + p.Y)));
                                 ops.Append("f\n");
                             }
+                        }
+                        if (op.Excluded && opt.DrawText)
+                        {
+                            var note = TextOutline.Build(HybridWriter.ExcludedNote, 14, true);
+                            double nx = Math.Max(4, (wd - note.Bounds.Width) / 2);
+                            ops.Append("/GS0 gs 0.7843 0 0 rg\n");
+                            PdfPathOps.Append(ops, note, p => new Point(nx + p.X, hd - (6 + p.Y)));
+                            ops.Append("f\n");
                         }
                         string xobjects = "/Im0 " + "{IMG} 0 R";
                         if (wmForm != 0)

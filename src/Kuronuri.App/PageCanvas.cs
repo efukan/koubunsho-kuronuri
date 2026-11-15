@@ -91,18 +91,37 @@ namespace Kuronuri.App
             return (Math.Round(ox * s) / s, Math.Round(oy * s) / s, k);
         }
 
+        // Page layout (ARCHITECTURE §2.4 / §4.4): the view shows the original page BasePage turned by Rot quarter turns.
+        // Items and all interaction state are kept in base coordinates; only drawing and the mouse go through CoordMap.
+        private int BasePage => Host!.Session!.BaseOf(Host.View.PageIndex);
+        private int Rot => Host!.Session!.RotationOfView(Host.View.PageIndex);
+        private double BaseW => Host!.Session!.Pages[BasePage].Width;
+        private double BaseH => Host!.Session!.Pages[BasePage].Height;
+
+        /// <summary>Screen point to base page coordinates (pt).</summary>
         public Point2 ToPage(Point p)
         {
             var (ox, oy, k) = Origin();
-            return new Point2((p.X - ox) / k, (p.Y - oy) / k);
+            var view = new Point2((p.X - ox) / k, (p.Y - oy) / k);
+            return Kuronuri.Core.Geometry.CoordMap.FromView(Rot, BaseW, BaseH, view);
         }
 
         private Point2 ToPageClamped(Point p)
         {
             var q = ToPage(p);
-            var v = Host!.View;
-            return new Point2(ShapeOps.Clamp(q.X, 0, v.PageWidthPt), ShapeOps.Clamp(q.Y, 0, v.PageHeightPt));
+            return new Point2(ShapeOps.Clamp(q.X, 0, BaseW), ShapeOps.Clamp(q.Y, 0, BaseH));
         }
+
+        /// <summary>Base page coordinates to view coordinates (pt) as a WPF transform.</summary>
+        private MatrixTransform BaseToView()
+        {
+            double[] m = Kuronuri.Core.Geometry.CoordMap.ToViewMatrix(Rot, BaseW, BaseH);
+            return new MatrixTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
+        }
+
+        /// <summary>Bounding box of an item in view coordinates (for upright labels).</summary>
+        private BoxD ViewBox(RedactionItem item) =>
+            ShapeOps.Box(Kuronuri.Core.Geometry.CoordMap.ToView(Rot, BaseW, BaseH, item));
 
         // ------------------------------------------------------------------ bitmaps
 
@@ -134,14 +153,14 @@ namespace Kuronuri.App
             var v = Host.View;
             double dps = v.DipPerPt * DpiScale;   // device px per pt
             Kuronuri.Core.Rendering.PageRenderer.PixelSize(v.PageWidthPt, v.PageHeightPt, 72 * dps, long.MaxValue, out int wpx, out int hpx, out _);
-            int page = v.PageIndex;
+            int page = BasePage, rot = Rot;
 
             if ((long)wpx * hpx <= PageRenderService.FullRenderLimitPixels)
             {
-                var key = RenderKey.Full(page, wpx, hpx);
+                var key = RenderKey.Full(page, wpx, hpx, rot);
                 var bmp = svc.Pages.Get(key);
                 if (bmp != null) { dc.DrawImage(bmp, pageRect); return; }
-                var any = svc.Pages.GetAnyFull(page);
+                var any = svc.Pages.GetAnyFull(page, rot);
                 if (any != null) dc.DrawImage(any, pageRect);
                 Request(svc, key);
                 return;
@@ -149,8 +168,8 @@ namespace Kuronuri.App
 
             // Huge: a reduced full bitmap as the base, plus the visible region at full resolution once scrolling stops.
             double f = Math.Sqrt((double)BasePlaceholderPixels / ((double)wpx * hpx));
-            var baseKey = RenderKey.Full(page, Math.Max(1, (int)(wpx * f)), Math.Max(1, (int)(hpx * f)));
-            var baseBmp = svc.Pages.Get(baseKey) ?? svc.Pages.GetAnyFull(page);
+            var baseKey = RenderKey.Full(page, Math.Max(1, (int)(wpx * f)), Math.Max(1, (int)(hpx * f)), rot);
+            var baseBmp = svc.Pages.Get(baseKey) ?? svc.Pages.GetAnyFull(page, rot);
             if (baseBmp != null) dc.DrawImage(baseBmp, pageRect);
 
             double scale = DpiScale;
@@ -161,7 +180,7 @@ namespace Kuronuri.App
             int x1 = (int)Math.Ceiling((vis.Right - pageRect.X) * scale) + grid, y1 = (int)Math.Ceiling((vis.Bottom - pageRect.Y) * scale) + grid;
             x0 = Math.Max(0, x0 / grid * grid); y0 = Math.Max(0, y0 / grid * grid);
             x1 = Math.Min(wpx, (x1 + grid - 1) / grid * grid); y1 = Math.Min(hpx, (y1 + grid - 1) / grid * grid);
-            var regionKey = new RenderKey(page, wpx, hpx, x0, y0, x1 - x0, y1 - y0);
+            var regionKey = new RenderKey(page, wpx, hpx, x0, y0, x1 - x0, y1 - y0, rot);
             var reg = svc.Pages.Get(regionKey);
             if (reg != null)
             {
@@ -187,9 +206,10 @@ namespace Kuronuri.App
             DrawPage(dc, pageRect);
             if (!Editable) return;
 
-            int page = v.PageIndex;
+            int page = BasePage;
             var onPage = s.Items.Items.Where(i => i.PageIndex == page).ToList();
             dc.PushTransform(new MatrixTransform(k, 0, 0, k, ox, oy));
+            dc.PushTransform(BaseToView());   // everything below is drawn in base coordinates
 
             // Overlays as they will be burned (screen geometry is never larger than the burn).
             dc.PushOpacity(v.Peek ? 0.25 : 1.0);
@@ -210,7 +230,8 @@ namespace Kuronuri.App
             dc.Pop();
 
             // Selection, highlight, labels.
-            var ordered = ShapeMath.InDisplayOrder(s.Items.Items);
+            var ordered = Kuronuri.Core.Geometry.CoordMap.InDisplayOrder(s.Items.Items, s.Layout, s.Pages);
+            var badges = new List<(string Text, BoxD Box, bool Warn)>();
             var numbers = new Dictionary<Guid, int>();
             for (int n = 0; n < ordered.Count; n++) numbers[ordered[n].Id] = n + 1;
             foreach (var item in onPage)
@@ -224,11 +245,11 @@ namespace Kuronuri.App
                 }
                 if (Host.HighlightId == item.Id)
                     dc.DrawRectangle(null, new Pen(HighlightBrush, 4 / k), new Rect(bb.L, bb.T, Math.Max(0, bb.W), Math.Max(0, bb.H)).Inflated(4 / k));
-                DrawBadge(dc, numbers[item.Id].ToString(CultureInfo.InvariantCulture) + (item.Reason?.Code is { Length: > 0 } c ? " " + c : ""),
-                    bb.L, bb.T, k, item.Reason == null);
+                badges.Add((numbers[item.Id].ToString(CultureInfo.InvariantCulture) + (item.Reason?.Code is { Length: > 0 } c ? " " + c : ""),
+                    ShapeOps.Box(Kuronuri.Core.Geometry.CoordMap.ToView(Rot, BaseW, BaseH, shown)), item.Reason == null));
             }
             var single = SingleRectSelection(s);
-            if (single != null && _drag != DragKind.Move)
+            if (single != null && single.PageIndex == page && _drag != DragKind.Move)
             {
                 var r = _drag == DragKind.Resize ? _resizeRect! : (RectShape)single.Shapes[0];
                 foreach (var h in Handles(r)) dc.DrawRectangle(Brushes.White, new Pen(Brushes.DodgerBlue, 1 / k), HandleRect(h.P, k));
@@ -249,7 +270,7 @@ namespace Kuronuri.App
                     dc.DrawRectangle(PreviewFill, new Pen(Brushes.Black, 1 / k) { DashStyle = DashStyles.Dash }, new Rect(r.X, r.Y, r.W, r.H));
             if (_drag == DragKind.Rect && _rectStart != null && _rectEnd != null)
             {
-                var r = ShapeOps.RectFromCorners(_rectStart.Value, _rectEnd.Value, v.PageWidthPt, v.PageHeightPt);
+                var r = ShapeOps.RectFromCorners(_rectStart.Value, _rectEnd.Value, BaseW, BaseH);
                 dc.DrawRectangle(PreviewFill, new Pen(Brushes.Black, 1 / k) { DashStyle = DashStyles.Dash }, new Rect(r.X, r.Y, r.W, r.H));
             }
             if (_drag == DragKind.Stroke && _stroke.Count > 0)
@@ -257,7 +278,9 @@ namespace Kuronuri.App
                 var pen = new Pen(PreviewFill, Host.BrushPt) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
                 dc.DrawGeometry(null, pen, ReviewPaginator.StrokeGeometry(new StrokeShape(_stroke, Host.BrushPt)));
             }
-            dc.Pop();
+            dc.Pop();   // base -> view
+            foreach (var b in badges) DrawBadge(dc, b.Text, b.Box.L, b.Box.T, k, b.Warn);   // upright, in view coordinates
+            dc.Pop();   // scale / offset
         }
 
         private static void DrawShapes(DrawingContext dc, IEnumerable<Shape> shapes, RedactionStyle style, Brush brush, double k)
@@ -354,7 +377,7 @@ namespace Kuronuri.App
             double tol = 3 / v.DipPerPt;
             if (e.ChangedButton == MouseButton.Right)
             {
-                var target = HitItem(s, v.PageIndex, p, tol);
+                var target = HitItem(s, BasePage, p, tol);
                 if (target != null && !s.IsSelected(target.Id)) s.Select(new[] { target.Id });
                 e.Handled = true;
                 InvalidateVisual();
@@ -368,7 +391,7 @@ namespace Kuronuri.App
                 case Tool.Select:
                 {
                     var single = SingleRectSelection(s);
-                    if (single != null && single.PageIndex == v.PageIndex)
+                    if (single != null && single.PageIndex == BasePage)
                     {
                         var r = (RectShape)single.Shapes[0];
                         foreach (var h in Handles(r))
@@ -378,7 +401,7 @@ namespace Kuronuri.App
                                 return;
                             }
                     }
-                    var hit = HitItem(s, v.PageIndex, p, tol);
+                    var hit = HitItem(s, BasePage, p, tol);
                     bool add = (Keyboard.Modifiers & (ModifierKeys.Shift | ModifierKeys.Control)) != 0;
                     if (hit == null)
                     {
@@ -404,7 +427,7 @@ namespace Kuronuri.App
                     break;
                 case Tool.Text:
                 {
-                    _text = Host.TextFor(v.PageIndex);
+                    _text = Host.TextFor(BasePage);
                     int idx = _text?.HitChar(p, 1.5 / v.DipPerPt + 0.5) ?? -1;
                     if (idx >= 0) { _drag = DragKind.TextSel; _textStart = _textEnd = idx; }
                     else { _drag = DragKind.Rect; _rectStart = _rectEnd = ToPageClamped(pos); }   // no text here: works like the rectangle tool
@@ -416,7 +439,7 @@ namespace Kuronuri.App
                     break;
                 case Tool.Eraser:
                 {
-                    foreach (var item in s.Items.Items.Where(i => i.PageIndex == v.PageIndex).Reverse())
+                    foreach (var item in s.Items.Items.Where(i => i.PageIndex == BasePage).Reverse())
                     {
                         int idx = ShapeOps.HitShape(item, p, tol);
                         if (idx >= 0) { Host.Execute(EditOps.EraseShape(item, idx)); break; }
@@ -453,11 +476,11 @@ namespace Kuronuri.App
                 {
                     var p = ToPage(pos);
                     double dx = p.X - _moveStart.X, dy = p.Y - _moveStart.Y;
-                    var sel = s.SelectedItems.Where(i => i.PageIndex == v.PageIndex).ToList();
+                    var sel = s.SelectedItems.Where(i => i.PageIndex == BasePage).ToList();
                     if (sel.Count > 0)
                     {
-                        var union = new RedactionItem(Guid.Empty, v.PageIndex, sel.SelectMany(i => i.Shapes).ToList(), null);
-                        (dx, dy) = ShapeOps.ClampDelta(union, dx, dy, v.PageWidthPt, v.PageHeightPt);
+                        var union = new RedactionItem(Guid.Empty, BasePage, sel.SelectMany(i => i.Shapes).ToList(), null);
+                        (dx, dy) = ShapeOps.ClampDelta(union, dx, dy, BaseW, BaseH);
                     }
                     _moveDx = dx; _moveDy = dy;
                     break;
@@ -497,7 +520,7 @@ namespace Kuronuri.App
             var tool = Host!.Tool;
             if (tool == Tool.Text)
             {
-                var t = Host.TextFor(Host.View.PageIndex);
+                var t = Host.TextFor(BasePage);
                 Cursor = t != null && t.HitChar(ToPage(pos), 1.5 / Host.View.DipPerPt + 0.5) >= 0 ? Cursors.IBeam : Cursors.Cross;
                 return;
             }
@@ -506,15 +529,18 @@ namespace Kuronuri.App
             var single = SingleRectSelection(s);
             var p = ToPage(pos);
             var v = Host.View;
-            if (single != null && single.PageIndex == v.PageIndex)
+            if (single != null && single.PageIndex == BasePage)
                 foreach (var h in Handles((RectShape)single.Shapes[0]))
                     if (HandleRect(h.P, v.DipPerPt).Inflated(2 / v.DipPerPt).Contains(new Point(p.X, p.Y)))
                     {
-                        Cursor = h.H == H.N || h.H == H.S ? Cursors.SizeNS : h.H == H.E || h.H == H.W ? Cursors.SizeWE :
-                            h.H == H.NW || h.H == H.SE ? Cursors.SizeNWSE : Cursors.SizeNESW;
+                        bool odd = (Rot & 1) == 1;   // a quarter turn swaps the visual direction of the handles
+                        bool ns = h.H == H.N || h.H == H.S, we = h.H == H.E || h.H == H.W, nwse = h.H == H.NW || h.H == H.SE;
+                        if (odd) { (ns, we) = (we, ns); nwse = !nwse; }
+                        Cursor = ns ? Cursors.SizeNS : we ? Cursors.SizeWE :
+                            nwse ? Cursors.SizeNWSE : Cursors.SizeNESW;
                         return;
                     }
-            Cursor = HitItem(s, v.PageIndex, p, 3 / v.DipPerPt) != null ? Cursors.SizeAll : null;
+            Cursor = HitItem(s, BasePage, p, 3 / v.DipPerPt) != null ? Cursors.SizeAll : null;
         }
 
         private BoxD MarqueeBox() => new BoxD(Math.Min(_marqueeStart.X, _marqueeEnd.X), Math.Min(_marqueeStart.Y, _marqueeEnd.Y),
@@ -547,7 +573,7 @@ namespace Kuronuri.App
             {
                 case DragKind.Move:
                 {
-                    var cmd = EditOps.MoveMany(s.SelectedItems.Where(i => i.PageIndex == v.PageIndex).ToList(), _moveDx, _moveDy);
+                    var cmd = EditOps.MoveMany(s.SelectedItems.Where(i => i.PageIndex == BasePage).ToList(), _moveDx, _moveDy);
                     _moveDx = _moveDy = 0;
                     if (cmd != null) Host.Execute(cmd);
                     break;
@@ -565,11 +591,11 @@ namespace Kuronuri.App
                 }
                 case DragKind.Rect:
                 {
-                    var r = ShapeOps.RectFromCorners(_rectStart!.Value, _rectEnd!.Value, v.PageWidthPt, v.PageHeightPt);
+                    var r = ShapeOps.RectFromCorners(_rectStart!.Value, _rectEnd!.Value, BaseW, BaseH);
                     _rectStart = _rectEnd = null;
                     if (r.W >= 3 && r.H >= 3)
                     {
-                        var cmd = EditOps.AddRect(v.PageIndex, r, Host.CurrentReason);
+                        var cmd = EditOps.AddRect(BasePage, r, Host.CurrentReason);
                         Host.Execute(cmd);
                         s.Select(new[] { cmd.Item.Id });
                     }
@@ -580,7 +606,7 @@ namespace Kuronuri.App
                     var m = MarqueeBox();
                     double minPt = 3 / v.DipPerPt;
                     if (m.W < minPt && m.H < minPt) { if (!_marqueeAdd) s.Select(new Guid[0]); break; }   // a click on an empty place
-                    var inside = s.Items.Items.Where(i => i.PageIndex == v.PageIndex && ShapeOps.Box(i).Intersects(m)).Select(i => i.Id);
+                    var inside = s.Items.Items.Where(i => i.PageIndex == BasePage && ShapeOps.Box(i).Intersects(m)).Select(i => i.Id);
                     s.Select(_marqueeAdd ? s.SelectedIds.Concat(inside).ToList() : inside.ToList());
                     break;
                 }
@@ -590,7 +616,7 @@ namespace Kuronuri.App
                     _text = null;
                     if (rects.Count > 0)
                     {
-                        var cmd = new AddItemCommand(new RedactionItem(Guid.NewGuid(), v.PageIndex, rects.Cast<Shape>().ToList(), Host.CurrentReason));
+                        var cmd = new AddItemCommand(new RedactionItem(Guid.NewGuid(), BasePage, rects.Cast<Shape>().ToList(), Host.CurrentReason));
                         Host.Execute(cmd);
                         s.Select(new[] { cmd.Item.Id });
                     }
@@ -600,7 +626,7 @@ namespace Kuronuri.App
                 {
                     var stroke = ShapeOps.FinishStroke(_stroke, Host.BrushPt);
                     _stroke.Clear();
-                    Host.Execute(s.Grouper.AddStroke(s.Items, v.PageIndex, stroke, Host.CurrentReason));
+                    Host.Execute(s.Grouper.AddStroke(s.Items, BasePage, stroke, Host.CurrentReason));
                     break;
                 }
             }

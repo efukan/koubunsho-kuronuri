@@ -17,7 +17,12 @@ namespace Kuronuri.Core.Model
     public enum RedactionStyle { Black, WhiteWithBorder }
     public sealed record PageInfo(double Width, double Height, int Rotation);
     public sealed record OriginalInfo(string Sha256, long Length, string FileName);
-    public sealed record RedactionProject(OriginalInfo Original, IReadOnlyList<PageInfo> Pages, IReadOnlyList<RedactionItem> Items, RedactionStyle Style);
+    public sealed record RedactionProject(OriginalInfo Original, IReadOnlyList<PageInfo> Pages, IReadOnlyList<RedactionItem> Items, RedactionStyle Style,
+        PageLayout? Layout = null)
+    {
+        /// <summary>The page layout, or the identity layout when none was set (ARCHITECTURE §4.4).</summary>
+        public PageLayout EffectiveLayout => Layout ?? PageLayout.Identity(Pages.Count);
+    }
 
     public static class ShapeMath
     {
@@ -46,12 +51,13 @@ namespace Kuronuri.Core.Model
     [DataContract] public sealed class ProjectDto
     {
         [DataMember(Name = "app", Order = 0)] public string App = "kuronuri";
-        [DataMember(Name = "schema", Order = 1)] public int Schema = 1;
+        [DataMember(Name = "schema", Order = 1)] public int Schema = ProjectJson.CurrentSchema;
         [DataMember(Name = "appVersion", Order = 2)] public string AppVersion = "";
         [DataMember(Name = "original", Order = 3)] public OriginalDto Original = new OriginalDto();
         [DataMember(Name = "pages", Order = 4)] public List<PageDto> Pages = new List<PageDto>();
         [DataMember(Name = "style", Order = 5)] public string Style = "black";
         [DataMember(Name = "items", Order = 6)] public List<ItemDto> Items = new List<ItemDto>();
+        [DataMember(Name = "layout", Order = 7, EmitDefaultValue = false)] public LayoutDto? Layout;
     }
     [DataContract] public sealed class OriginalDto
     {
@@ -78,6 +84,12 @@ namespace Kuronuri.Core.Model
         [DataMember(Name = "label", Order = 1)] public string Label = "";
         [DataMember(Name = "text", Order = 2)] public string Text = "";
     }
+    [DataContract] public sealed class LayoutDto
+    {
+        [DataMember(Name = "order", Order = 0)] public int[] Order = new int[0];
+        [DataMember(Name = "rot", Order = 1)] public int[] Rot = new int[0];
+        [DataMember(Name = "excluded", Order = 2)] public bool[] Excluded = new bool[0];
+    }
     [DataContract] public sealed class ShapeDto
     {
         [DataMember(Name = "t", Order = 0)] public string T = "";                              // "rect" | "stroke"
@@ -91,7 +103,8 @@ namespace Kuronuri.Core.Model
 
     public static class ProjectJson
     {
-        public const int CurrentSchema = 1;
+        /// <summary>Written schema. Schema 1 (no page layout) is still read (ARCHITECTURE §4.4).</summary>
+        public const int CurrentSchema = 2;
 
         public static byte[] Serialize(RedactionProject p, string appVersion)
         {
@@ -108,6 +121,12 @@ namespace Kuronuri.Core.Model
                     Reason = i.Reason == null ? null : new ReasonDto { Code = i.Reason.Code, Label = i.Reason.Label, Text = i.Reason.FreeText },
                     Shapes = i.Shapes.Select(ToDto).ToList(),
                 }).ToList(),
+                Layout = p.Layout == null ? null : new LayoutDto
+                {
+                    Order = p.Layout.Order.ToArray(),
+                    Rot = p.Layout.Rotations.ToArray(),
+                    Excluded = p.Layout.Excluded.ToArray(),
+                },
             };
             using (var ms = new MemoryStream())
             {
@@ -121,7 +140,7 @@ namespace Kuronuri.Core.Model
             ProjectDto dto;
             using (var ms = new MemoryStream(utf8))
                 dto = (ProjectDto)new DataContractJsonSerializer(typeof(ProjectDto)).ReadObject(ms);
-            if (dto == null || dto.App != "kuronuri" || dto.Schema != CurrentSchema) throw new InvalidDataException("unsupported project data");
+            if (dto == null || dto.App != "kuronuri" || dto.Schema < 1 || dto.Schema > CurrentSchema) throw new InvalidDataException("unsupported project data");
             if (dto.Original == null || dto.Pages == null || dto.Items == null) throw new InvalidDataException("incomplete project data");
             var ids = new HashSet<string>();
             foreach (var i in dto.Items)
@@ -130,13 +149,21 @@ namespace Kuronuri.Core.Model
                     throw new InvalidDataException("invalid item");
                 if (!Guid.TryParse(i.Id, out _)) throw new InvalidDataException("invalid item id");
             }
+            PageLayout? layout = null;
+            if (dto.Layout != null)
+            {
+                if (dto.Layout.Order == null || dto.Layout.Rot == null || dto.Layout.Excluded == null) throw new InvalidDataException("invalid layout");
+                layout = new PageLayout(dto.Layout.Order, dto.Layout.Rot, dto.Layout.Excluded);
+                if (!layout.IsValidFor(dto.Pages.Count)) throw new InvalidDataException("invalid layout");
+            }
             return new RedactionProject(
                 new OriginalInfo(dto.Original.Sha256, dto.Original.Length, dto.Original.FileName),
                 dto.Pages.Select(x => new PageInfo(x.W, x.H, x.Rot)).ToList(),
                 dto.Items.Select(i => new RedactionItem(
                     Guid.Parse(i.Id), i.Page, i.Shapes.Select(FromDto).ToList(),
                     i.Reason == null ? null : new Reason(i.Reason.Code, i.Reason.Label, i.Reason.Text))).ToList(),
-                dto.Style == "whiteBorder" ? RedactionStyle.WhiteWithBorder : RedactionStyle.Black);
+                dto.Style == "whiteBorder" ? RedactionStyle.WhiteWithBorder : RedactionStyle.Black,
+                layout);
         }
 
         private static ShapeDto ToDto(Shape s)

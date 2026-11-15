@@ -24,7 +24,7 @@ namespace Kuronuri.Core.Geometry
     }
 
     /// <summary>The only place that knows about /Rotate. Display page space: top-left origin, y down, pt.</summary>
-    public static class CoordMap
+    public static partial class CoordMap
     {
         /// <summary>Matrix (a b c d e f): X = a*xd + c*yd + e, Y = b*xd + d*yd + f.</summary>
         public static double[] DisplayToUserMatrix(PageGeometry g)

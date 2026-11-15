@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Input;
@@ -39,6 +40,12 @@ namespace Kuronuri.App
         public static readonly RoutedUICommand PrevUnset = C("前の未設定", "PrevUnset", new KeyGesture(Key.F8, ModifierKeys.Shift));
         public static readonly RoutedUICommand Find = C("検索", "Find", new KeyGesture(Key.F, ModifierKeys.Control));
         public static readonly RoutedUICommand Help = C("使い方", "Help", new KeyGesture(Key.F1));
+        public static readonly RoutedUICommand RotateRight = C("右に90°回転", "RotateRight", new KeyGesture(Key.R, ModifierKeys.Control));
+        public static readonly RoutedUICommand RotateLeft = C("左に90°回転", "RotateLeft", new KeyGesture(Key.R, ModifierKeys.Control | ModifierKeys.Shift));
+        public static readonly RoutedUICommand Rotate180 = C("180°回転", "Rotate180");
+        public static readonly RoutedUICommand ToggleExclude = C("開示用PDFから除く／含める", "ToggleExclude");
+        public static readonly RoutedUICommand MovePageUp = C("前へ移動", "MovePageUp");
+        public static readonly RoutedUICommand MovePageDown = C("後ろへ移動", "MovePageDown");
     }
 
     /// <summary>One search result row.</summary>
@@ -47,10 +54,13 @@ namespace Kuronuri.App
         private bool _selected;
         private bool _covered;
 
-        public SearchHitVM(Kuronuri.Core.Text.TextHit hit, bool covered) { Hit = hit; _covered = covered; _selected = !covered; }
+        public SearchHitVM(Kuronuri.Core.Text.TextHit hit, bool covered, int viewPage) { Hit = hit; _covered = covered; _selected = !covered; Page = viewPage; }
 
         public Kuronuri.Core.Text.TextHit Hit { get; }
-        public int Page => Hit.Page + 1;
+        /// <summary>Page number as shown (view order, 1-based); updated when the page order changes.</summary>
+        public int Page { get; private set; }
+
+        public void SetViewPage(int page) { if (Page == page) return; Page = page; Raise(nameof(Page)); }
         public string Preview => Hit.Preview;
 
         public bool Selected
@@ -74,15 +84,16 @@ namespace Kuronuri.App
     /// <summary>One row of the item list.</summary>
     public sealed class ItemRow
     {
-        public ItemRow(RedactionItem item, int number)
+        /// <param name="viewPage">Page number as shown (view order, 1-based).</param>
+        public ItemRow(RedactionItem item, int number, int viewPage)
         {
-            Item = item; Number = number;
+            Item = item; Number = number; Page = viewPage;
         }
 
         public RedactionItem Item { get; }
         public Guid Id => Item.Id;
         public int Number { get; }
-        public int Page => Item.PageIndex + 1;
+        public int Page { get; }
         public bool IsUnset => Item.Reason == null;
         public string ReasonText => Describe(Item.Reason);
         public string Kind => Item.Shapes.Count > 1 ? "複数(" + Item.Shapes.Count + ")" : Item.Shapes[0] is RectShape ? "矩形" : "手書き";
@@ -105,18 +116,25 @@ namespace Kuronuri.App
         private readonly double _scale;
         private bool _requested;
 
-        public ThumbVM(int index, double wPt, double hPt, double dpiScale, Func<PageRenderService?> svc)
+        /// <param name="index">View position.</param><param name="basePage">Original page shown there.</param><param name="rotation">User rotation (ARCHITECTURE §2.4).</param>
+        public ThumbVM(int index, int basePage, int rotation, bool excluded, double baseW, double baseH, double dpiScale, Func<PageRenderService?> svc)
         {
-            Index = index; _svc = svc; _scale = dpiScale;
+            Index = index; BasePage = basePage; Rotation = rotation; Excluded = excluded; _baseW = baseW; _baseH = baseH; _svc = svc; _scale = dpiScale;
+            var (wPt, hPt) = Kuronuri.Core.Geometry.CoordMap.ViewSize(rotation, baseW, baseH);
             HeightDip = Math.Round(WidthDip * hPt / wPt);
             int wpx = Math.Max(1, (int)Math.Round(WidthDip * dpiScale)), hpx = Math.Max(1, (int)Math.Round(HeightDip * dpiScale));
-            Key = RenderKey.Full(index, wpx, hpx);
+            Key = RenderKey.Full(basePage, wpx, hpx, rotation);
         }
 
         public int Index { get; }
         public string Label => (Index + 1).ToString(CultureInfo.InvariantCulture);
         public double HeightDip { get; }
         public RenderKey Key { get; }
+        public int BasePage { get; }
+        public int Rotation { get; }
+        /// <summary>Not included in the disclosure PDF (ARCHITECTURE §4.4).</summary>
+        public bool Excluded { get; }
+        private readonly double _baseW, _baseH;
 
         // ---- redactions on this page (badge + black overlay)
 
@@ -128,11 +146,12 @@ namespace Kuronuri.App
         public ImageSource? Overlay { get; private set; }
 
         /// <summary>Updates the badge and the overlay; raises change notifications only when something changed.</summary>
-        public void SetItems(System.Collections.Generic.IReadOnlyList<RedactionItem> onPage, double pageWidthPt, double pageHeightPt)
+        public void SetItems(System.Collections.Generic.IReadOnlyList<RedactionItem> onPage)
         {
             int count = onPage.Count, unset = 0;
             foreach (var i in onPage) if (i.Reason == null) unset++;
-            ImageSource? overlay = count == 0 ? null : BuildOverlay(onPage, pageWidthPt, pageHeightPt);
+            ImageSource? overlay = count == 0 ? null : BuildOverlay(onPage.Select(i => Kuronuri.Core.Geometry.CoordMap.ToView(Rotation, _baseW, _baseH, i)).ToList(),
+                Kuronuri.Core.Geometry.CoordMap.ViewSize(Rotation, _baseW, _baseH));
             bool changed = count != Count || unset != UnsetCount || count > 0 || Overlay != null;
             Count = count; UnsetCount = unset; Overlay = overlay;
             if (!changed) return;
@@ -140,9 +159,10 @@ namespace Kuronuri.App
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
         }
 
-        private static ImageSource BuildOverlay(System.Collections.Generic.IReadOnlyList<RedactionItem> items, double w, double h)
+        private static ImageSource BuildOverlay(System.Collections.Generic.IReadOnlyList<RedactionItem> items, (double W, double H) size)
         {
             var g = new DrawingGroup();
+            double w = size.W, h = size.H;
             g.Children.Add(new GeometryDrawing(Brushes.Transparent, null, new RectangleGeometry(new Rect(0, 0, w, h))));
             foreach (var item in items)
                 foreach (var s in item.Shapes)

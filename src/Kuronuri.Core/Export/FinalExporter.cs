@@ -34,15 +34,31 @@ namespace Kuronuri.Core.Export
     /// </summary>
     public static class FinalExporter
     {
+        /// <summary>All pages in their original order and orientation (no page layout).</summary>
         public static List<FinalPageReport> Export(PdfDoc src, IReadOnlyList<RedactionItem> items, RedactionStyle style,
+            Stream output, FinalExportOptions opt, Action<int, int>? progress = null, CancellationToken token = default) =>
+            Export(src, OutputPlan.Identity(ReadPageInfos(src), items), style, output, opt, progress, token);
+
+        /// <summary>Display sizes of all pages of a document (base coordinates).</summary>
+        public static List<PageInfo> ReadPageInfos(PdfDoc doc)
+        {
+            var list = new List<PageInfo>();
+            for (int i = 0; i < doc.PageCount; i++)
+                using (var p = doc.LoadPage(i)) list.Add(new PageInfo(p.Width, p.Height, 0));
+            return list;
+        }
+
+        /// <summary>The pages of <paramref name="plan"/> in its order and rotation; plan items are in view coordinates.</summary>
+        public static List<FinalPageReport> Export(PdfDoc src, OutputPlan plan, RedactionStyle style,
             Stream output, FinalExportOptions opt, Action<int, int>? progress = null, CancellationToken token = default)
         {
-            int n = src.PageCount;
+            int n = plan.Pages.Count;
+            if (n == 0) throw new InvalidOperationException("no pages to output");
             var w = new MiniPdfWriter(output);
             int catalog = w.Reserve(), pages = w.Reserve();
             var kids = new StringBuilder();
             var reports = new List<FinalPageReport>();
-            var byPage = items.GroupBy(i => i.PageIndex)
+            var byPage = plan.Items.GroupBy(i => i.PageIndex)
                 .ToDictionary(g => g.Key, g => (IReadOnlyList<Shape>)g.SelectMany(i => i.Shapes).ToList());
             var lossless = new LosslessCodec();
 
@@ -53,14 +69,16 @@ namespace Kuronuri.Core.Export
                 for (int i = 0; i < n; i++)
                 {
                     token.ThrowIfCancellationRequested();
-                    IntPtr page = PdfiumNative.FPDF_LoadPage(src.Handle, i);
-                    if (page == IntPtr.Zero) throw new InvalidOperationException("page load failed: " + (i + 1));
+                    var op = plan.Pages[i];
+                    IntPtr page = PdfiumNative.FPDF_LoadPage(src.Handle, op.BasePage);
+                    if (page == IntPtr.Zero) throw new InvalidOperationException("page load failed: " + (op.BasePage + 1));
                     try
                     {
                         double wd = PdfiumNative.FPDF_GetPageWidthF(page), hd = PdfiumNative.FPDF_GetPageHeightF(page);
+                        (wd, hd) = CoordMap.ViewSize(op.Rotation, wd, hd);
                         PageRenderer.PixelSize(wd, hd, opt.Dpi, opt.MaxPixelsPerPage, out int wpx, out int hpx, out double eff, PageRenderer.MaxEncodableSide);
                         buf.Ensure((long)wpx * hpx * 4);
-                        PageRenderer.RenderFull(page, buf.Ptr, wpx, hpx);
+                        PageRenderer.RenderFull(page, buf.Ptr, wpx, hpx, op.Rotation);
 
                         if (byPage.TryGetValue(i, out var shapes))
                         {
@@ -106,6 +124,9 @@ namespace Kuronuri.Core.Export
         /// <summary>0-based indexes of pages whose dpi was lowered automatically (huge pages).</summary>
         public List<int> ReducedPages = new List<int>();
 
+        /// <summary>The same pages as original page numbers (0-based), for messages in view order.</summary>
+        public List<int> ReducedBasePages = new List<int>();
+
         public long FileBytes;
     }
 
@@ -123,7 +144,12 @@ namespace Kuronuri.Core.Export
     /// </summary>
     public static class FinalOutput
     {
+        /// <summary>All pages in their original order and orientation (no page layout).</summary>
         public static FinalOutputResult Write(PdfDoc src, IReadOnlyList<PageInfo> pages, IReadOnlyList<RedactionItem> items, RedactionStyle style,
+            string destPath, IEnumerable<string> forbiddenPaths, FinalExportOptions opt, Action<int, int>? progress = null, CancellationToken token = default) =>
+            Write(src, OutputPlan.Identity(pages, items), style, destPath, forbiddenPaths, opt, progress, token);
+
+        public static FinalOutputResult Write(PdfDoc src, OutputPlan plan, RedactionStyle style,
             string destPath, IEnumerable<string> forbiddenPaths, FinalExportOptions opt, Action<int, int>? progress = null, CancellationToken token = default)
         {
             SavePathGuard.EnsureAllowed(destPath, forbiddenPaths);
@@ -134,19 +160,19 @@ namespace Kuronuri.Core.Export
             {
                 using (var fs = new FileStream(part, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
                 {
-                    result.Pages = FinalExporter.Export(src, items, style, fs, opt, progress, token);
+                    result.Pages = FinalExporter.Export(src, plan, style, fs, opt, progress, token);
                     fs.Flush(true);
                 }
                 token.ThrowIfCancellationRequested();
                 for (int i = 0; i < result.Pages.Count; i++)
-                    if (result.Pages[i].EffectiveDpi < opt.Dpi - 0.01) result.ReducedPages.Add(i);
+                    if (result.Pages[i].EffectiveDpi < opt.Dpi - 0.01) { result.ReducedPages.Add(i); result.ReducedBasePages.Add(plan.Pages[i].BasePage); }
 
                 var fails = new List<string>();
                 using (var fs = new FileStream(part, FileMode.Open, FileAccess.Read, FileShare.Read))
-                    fails.AddRange(OutputVerifier.VerifyStructure(fs, pages.Count));
+                    fails.AddRange(OutputVerifier.VerifyStructure(fs, plan.Pages.Count));
                 if (fails.Count == 0)
                     using (var doc = PdfDoc.FromFile(part))
-                        fails.AddRange(OutputVerifier.VerifyWithPdfium(doc, pages, items, style));
+                        fails.AddRange(OutputVerifier.VerifyWithPdfium(doc, plan.PageInfos, plan.Items, style));
                 if (fails.Count > 0) throw new OutputVerificationException(fails);
 
                 SavePathGuard.ReplaceWithPart(part, destPath);

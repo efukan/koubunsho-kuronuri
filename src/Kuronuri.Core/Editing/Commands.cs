@@ -101,3 +101,20 @@ namespace Kuronuri.Core.Editing
         }
     }
 }
+
+namespace Kuronuri.Core.Editing
+{
+    /// <summary>Changes the page layout (order / rotation / exclusion) as one undoable step (ARCHITECTURE §5).</summary>
+    public sealed class SetLayoutCommand : EditCommand
+    {
+        public PageLayout Before { get; }
+        public PageLayout After { get; }
+
+        public SetLayoutCommand(PageLayout before, PageLayout after) { Before = before; After = after; }
+
+        internal override void Apply(ItemList list) => list.SetLayout(After);
+        internal override void Revert(ItemList list) => list.SetLayout(Before);
+        public override IEnumerable<RedactionItem> ItemsAfter => Enumerable.Empty<RedactionItem>();
+        public override IEnumerable<RedactionItem> ItemsBefore => Enumerable.Empty<RedactionItem>();
+    }
+}

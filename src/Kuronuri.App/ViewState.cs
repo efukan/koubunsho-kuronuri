@@ -56,6 +56,21 @@ namespace Kuronuri.App
             Raise();
         }
 
+        /// <summary>
+        /// The page order or a page size changed (page layout, ARCHITECTURE §4.4): show view position <paramref name="index"/>
+        /// with the current zoom (or fit mode) and a clamped scroll position.
+        /// </summary>
+        public void Relayout(Func<int, (double W, double H)> pageSize, int index)
+        {
+            _pageSize = pageSize;
+            _pageIndex = Math.Max(0, Math.Min(PageCount - 1, index));
+            (PageWidthPt, PageHeightPt) = _pageSize(_pageIndex);
+            ApplyFit();
+            Clamp();
+            PageChanged?.Invoke(this, EventArgs.Empty);
+            Raise();
+        }
+
         public void SetViewport(double w, double h)
         {
             if (w <= 0 || h <= 0 || (Math.Abs(w - ViewportW) < 0.5 && Math.Abs(h - ViewportH) < 0.5)) return;

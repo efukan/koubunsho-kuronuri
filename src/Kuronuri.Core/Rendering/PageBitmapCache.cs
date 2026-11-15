@@ -6,9 +6,10 @@ using System.Windows.Media.Imaging;
 namespace Kuronuri.Core.Rendering
 {
     /// <summary>Identifies one rendered bitmap: page, full page pixel size, and the rendered region within it.</summary>
-    public readonly record struct RenderKey(int Page, int FullW, int FullH, int X, int Y, int W, int H)
+    /// <remarks><see cref="Rotation"/> is the user rotation (ARCHITECTURE §2.4); FullW x FullH is the rotated size.</remarks>
+    public readonly record struct RenderKey(int Page, int FullW, int FullH, int X, int Y, int W, int H, int Rotation = 0)
     {
-        public static RenderKey Full(int page, int w, int h) => new RenderKey(page, w, h, 0, 0, w, h);
+        public static RenderKey Full(int page, int w, int h, int rotation = 0) => new RenderKey(page, w, h, 0, 0, w, h, rotation);
         public bool IsFull => X == 0 && Y == 0 && W == FullW && H == FullH;
         public long Bytes => (long)W * H * 4;
     }
@@ -71,11 +72,11 @@ namespace Kuronuri.Core.Rendering
         }
 
         /// <summary>Returns any cached bitmap of the page (used as a blurry placeholder while the exact one renders).</summary>
-        public BitmapSource? GetAnyFull(int page)
+        public BitmapSource? GetAnyFull(int page, int rotation = 0)
         {
             lock (_gate)
             {
-                foreach (var e in _lru) if (e.Key.Page == page && e.Key.IsFull) return e.Bmp;
+                foreach (var e in _lru) if (e.Key.Page == page && e.Key.Rotation == rotation && e.Key.IsFull) return e.Bmp;
                 return null;
             }
         }

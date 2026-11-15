@@ -187,7 +187,7 @@ namespace Kuronuri.App
             _tool = tool;
             _session?.Grouper.Close();
             var target = tool switch { Tool.Rect => toolRect, Tool.Text => toolText, Tool.Freehand => toolFree, Tool.Eraser => toolEraser, _ => toolSelect };
-            if (tool == Tool.Text && _session != null) PreloadText(_view.PageIndex);
+            if (tool == Tool.Text && _session != null) PreloadText(_session.BaseOf(_view.PageIndex));
             stHint.Text = ToolHint(tool);
             if (target.IsChecked != true) target.IsChecked = true;
             rightCanvas.InvalidateVisual();
@@ -255,7 +255,7 @@ namespace Kuronuri.App
             // Ctrl+A: every item on the current page (a list keeps its own Ctrl+A).
             if (key == Key.A && mods == ModifierKeys.Control && !inSelector && _session != null)
             {
-                _session.Select(_session.Items.Items.Where(i => i.PageIndex == _view.PageIndex).Select(i => i.Id).ToList());
+                _session.Select(_session.Items.Items.Where(i => i.PageIndex == _session.BaseOf(_view.PageIndex)).Select(i => i.Id).ToList());
                 e.Handled = true;
                 return;
             }
@@ -353,15 +353,14 @@ namespace Kuronuri.App
             styleWhite.IsChecked = s.Style == RedactionStyle.WhiteWithBorder;
             _syncing = false;
 
-            double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
-            _thumbs = s.Pages.Select((p, i) => new ThumbVM(i, p.Width, p.Height, dpi, () => _session?.Renderer)).ToList();
-            thumbList.ItemsSource = _thumbs;
-            UpdateThumbBadges();
             ClearSearch();
             startScreen.Visibility = Visibility.Collapsed;
             infoBar.Hide();
             _view.SetViewport(rightCanvas.ActualWidth, rightCanvas.ActualHeight);
-            _view.Reset(s.Pages.Count, i => (s.Pages[i].Width, s.Pages[i].Height));
+            _view.Reset(s.Pages.Count, s.ViewSize);
+            _shownLayout = null;
+            BuildThumbs();
+            UpdateExcludedBanner();
             RebuildList();
             UpdateReasonEditor();
             UpdateStatus();
@@ -369,6 +368,12 @@ namespace Kuronuri.App
         }
 
         private void Items_Changed(object? sender, EventArgs e)
+        {
+            SyncLayout();   // the page layout is part of the undoable state (ARCHITECTURE §5)
+            ItemsChangedCore();
+        }
+
+        private void ItemsChangedCore()
         {
             RebuildList();
             UpdateThumbBadges();
@@ -393,9 +398,10 @@ namespace Kuronuri.App
             var s = _session;
             if (s == null) return;
             s.Grouper.Close();
-            int p = _view.PageIndex;
-            _pageCache.SetPinnedPages(new[] { p - 1, p, p + 1 });
-            if (_tool == Tool.Text) PreloadText(p);
+            int p = _view.PageIndex;   // view position; the cache and the text are keyed by original page numbers
+            _pageCache.SetPinnedPages(new[] { p - 1, p, p + 1 }.Where(v => v >= 0 && v < s.Pages.Count).Select(s.BaseOf));
+            if (_tool == Tool.Text) PreloadText(s.BaseOf(p));
+            UpdateExcludedBanner();
             if (thumbList.SelectedIndex != p)
             {
                 _syncing = true;
@@ -412,14 +418,16 @@ namespace Kuronuri.App
 
         private CancellationTokenSource? _prefetchCts;
 
-        private void Prefetch(int page, CancellationToken token)
+        /// <param name="view">View position of the neighbouring page.</param>
+        private void Prefetch(int view, CancellationToken token)
         {
             var s = _session;
-            if (token.IsCancellationRequested || s?.Renderer == null || page < 0 || page >= s.Pages.Count) return;
+            if (token.IsCancellationRequested || s?.Renderer == null || view < 0 || view >= s.Pages.Count) return;
             double dps = _view.DipPerPt * VisualTreeHelper.GetDpi(this).DpiScaleX;
-            PageRenderer.PixelSize(s.Pages[page].Width, s.Pages[page].Height, 72 * dps, long.MaxValue, out int w, out int h, out _);
+            var (vw, vh) = s.ViewSize(view);
+            PageRenderer.PixelSize(vw, vh, 72 * dps, long.MaxValue, out int w, out int h, out _);
             if ((long)w * h > PageRenderService.FullRenderLimitPixels) return;
-            _ = s.Renderer.RenderAsync(RenderKey.Full(page, w, h), token).ContinueWith(t => { var _ = t.Exception; }, TaskScheduler.Default);
+            _ = s.Renderer.RenderAsync(RenderKey.Full(s.BaseOf(view), w, h, s.RotationOfView(view)), token).ContinueWith(t => { var _ = t.Exception; }, TaskScheduler.Default);
         }
 
         private void Thumb_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -436,8 +444,8 @@ namespace Kuronuri.App
             var rows = new ObservableCollection<ItemRow>();
             if (s != null)
             {
-                var ordered = ShapeMath.InDisplayOrder(s.Items.Items);
-                for (int i = 0; i < ordered.Count; i++) rows.Add(new ItemRow(ordered[i], i + 1));
+                var ordered = Kuronuri.Core.Geometry.CoordMap.InDisplayOrder(s.Items.Items, s.Layout, s.Pages);
+                for (int i = 0; i < ordered.Count; i++) rows.Add(new ItemRow(ordered[i], i + 1, s.ViewOf(ordered[i].PageIndex) + 1));
             }
             _rows = rows;
             _syncing = true;
@@ -480,9 +488,10 @@ namespace Kuronuri.App
         /// <summary>Shows the item centred on its page and highlights it for one second.</summary>
         private void JumpTo(RedactionItem item)
         {
-            _view.GoToPage(item.PageIndex);
-            var b = ShapeOps.Box(item);
-            _view.CenterOn((b.L + b.R) / 2, (b.T + b.B) / 2);
+            var s = _session;
+            if (s == null) return;
+            _view.GoToPage(s.ViewOf(item.PageIndex));
+            CenterOnBase(item.PageIndex, ShapeOps.Box(item));
             _highlight = item.Id;
             _highlightTimer.Stop(); _highlightTimer.Start();
             rightCanvas.InvalidateVisual();
@@ -570,13 +579,13 @@ namespace Kuronuri.App
             var items = (undo ? cmd.ItemsBefore : cmd.ItemsAfter).ToList();
             s.Select(items.Select(i => i.Id));
             s.PruneSelection();
-            var first = items.OrderBy(i => i.PageIndex).FirstOrDefault();
-            if (first != null && first.PageIndex != _view.PageIndex) _view.GoToPage(first.PageIndex);
+            var first = items.OrderBy(i => s.ViewOf(i.PageIndex)).FirstOrDefault();
+            if (first != null && s.ViewOf(first.PageIndex) != _view.PageIndex) _view.GoToPage(s.ViewOf(first.PageIndex));
             else if (first == null)
             {
                 // Removal undone by redo of an add, etc.: show the page of what disappeared.
                 var gone = (undo ? cmd.ItemsAfter : cmd.ItemsBefore).FirstOrDefault();
-                if (gone != null && gone.PageIndex != _view.PageIndex) _view.GoToPage(gone.PageIndex);
+                if (gone != null && s.ViewOf(gone.PageIndex) != _view.PageIndex) _view.GoToPage(s.ViewOf(gone.PageIndex));
             }
         }
 
@@ -687,20 +696,22 @@ namespace Kuronuri.App
             int unset = s.Items.Items.Count(i => i.Reason == null);
             if (s.Items.Count == 0 && !Confirm("黒塗り箇所が1つもありません。\nこのまま開示用PDFを作成しますか？（全ページがそのまま画像になります）")) return;
             if (unset > 0 && !Confirm("理由が設定されていない箇所が " + unset + " 件あります。\nこのまま開示用PDFを作成しますか？\n\n（「キャンセル」して F8 キーで未設定の箇所を順に確認できます）")) return;
+            int excluded = s.Pages.Count - s.Layout.IncludedCount;
+            if (excluded > 0 && !Confirm(excluded + " ページを開示用PDFから除いて作成します（全 " + s.Pages.Count + " ページ中 " + s.Layout.IncludedCount + " ページを出力）。\nよろしいですか？")) return;
             string? dest = FileDialogs.Save(this, "開示用PDFを作成", s.Folder, ReviewFile.DefaultFinalName(s.DisplayFileName));
             if (dest == null) return;
             if (!SavePathGuard.IsAllowed(dest, s.ProtectedFilesForFinal)) { Error("原本のPDFや、開いている確認用PDFには上書きできません。別の名前を指定してください。"); return; }
 
             var items = s.Items.Items.ToList();
-            var pages = s.Pages;
+            var plan = OutputPlan.Build(s.Pages, items, s.Layout, includeExcluded: false);   // order / rotation / exclusion (ARCHITECTURE §4.4)
             var style = s.Style;
             var opt = new FinalExportOptions { Dpi = _settings.ExportDpi, JpegQuality = _settings.JpegQuality };
             FinalOutputResult res;
             var sw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                res = RunWithProgress("開示用PDFを作成しています…", pages.Count, (token, progress) => _worker.Run(() =>
-                    FinalOutput.Write(s.Doc, pages, items, style, dest, s.ProtectedFilesForFinal, opt, (d, n) => progress.Report(d), token), token));
+                res = RunWithProgress("開示用PDFを作成しています…", plan.Pages.Count, (token, progress) => _worker.Run(() =>
+                    FinalOutput.Write(s.Doc, plan, style, dest, s.ProtectedFilesForFinal, opt, (d, n) => progress.Report(d), token), token));
             }
             catch (OperationCanceledException) { Notify(InfoSeverity.Info, "開示用PDFの作成を中止しました", "ファイルは作成されていません。"); return; }
             catch (OutputVerificationException) { Error("開示用PDFの検証に合格しなかったため、作成したファイルを削除しました。\n（黒塗りが正しく焼き込まれていないか、想定外のデータが含まれていました）\n\nもう一度作成してください。同じ結果になる場合は原本のPDFを作り直してください。"); return; }
@@ -710,13 +721,13 @@ namespace Kuronuri.App
             catch (Exception ex) when (Recoverable(ex)) { UnexpectedError("開示用PDFを作成できませんでした", ex); return; }
             sw.Stop();
 
-            string msg = pages.Count + " ページ・" + FormatBytes(res.FileBytes) + "・" + (sw.ElapsedMilliseconds / 1000.0).ToString("0.0") + " 秒。黒塗りが焼き込まれ、元の文字や情報が残っていないことを確認済みです。";
+            string msg = plan.Pages.Count + " ページ・" + FormatBytes(res.FileBytes) + "・" + (sw.ElapsedMilliseconds / 1000.0).ToString("0.0") + " 秒。黒塗りが焼き込まれ、元の文字や情報が残っていないことを確認済みです。";
             var severity = InfoSeverity.Success;
             if (res.ReducedPages.Count > 0)
             {
                 severity = InfoSeverity.Warning;
                 msg += "\n大きすぎるページは解像度を下げて作成しました: " +
-                       string.Join(", ", res.ReducedPages.Take(10).Select(i => (i + 1) + "ページ（約" + Math.Round(res.Pages[i].EffectiveDpi) + "dpi）")) +
+                       string.Join(", ", res.ReducedPages.Take(10).Select(i => (s.ViewOf(res.ReducedBasePages[res.ReducedPages.IndexOf(i)]) + 1) + "ページ（約" + Math.Round(res.Pages[i].EffectiveDpi) + "dpi）")) +
                        (res.ReducedPages.Count > 10 ? " ほか" : "");
             }
             string created = dest;
@@ -746,8 +757,8 @@ namespace Kuronuri.App
             if (dlg.ShowDialog() != true) return;
             var paper = new Size(dlg.PrintableAreaWidth, dlg.PrintableAreaHeight);
             PagePaginator pag = review
-                ? new ReviewPaginator(_worker, s.Doc, s.Items.Items.ToList(), _settings.PrintDpi, paper, new HybridOptions().Watermark)
-                : new RedactedPaginator(_worker, s.Doc, s.Items.Items.ToList(), s.Style, _settings.PrintDpi, paper);
+                ? new ReviewPaginator(_worker, s.Doc, OutputPlan.Build(s.Pages, s.Items.Items.ToList(), s.Layout, includeExcluded: true), _settings.PrintDpi, paper, new HybridOptions().Watermark)
+                : new RedactedPaginator(_worker, s.Doc, OutputPlan.Build(s.Pages, s.Items.Items.ToList(), s.Layout, includeExcluded: false), s.Style, _settings.PrintDpi, paper);
             _busy = true;
             var old = Cursor;
             Cursor = Cursors.Wait;

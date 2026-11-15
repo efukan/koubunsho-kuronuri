@@ -82,7 +82,23 @@ namespace Kuronuri.App
         /// <summary>Destinations a final output must never overwrite: the original and the open review PDF.</summary>
         public IEnumerable<string> ProtectedFilesForFinal => new[] { OriginalPath, ReviewPath }.Where(p => p != null).Select(p => p!);
 
-        public RedactionProject ToProject() => new RedactionProject(Original, Pages, Items.Items.ToList(), Style);
+        public RedactionProject ToProject() => new RedactionProject(Original, Pages, Items.Items.ToList(), Style, Layout.IsIdentity ? null : Layout);
+
+        // ------------------------------------------------------------------ page layout (ARCHITECTURE §4.4)
+
+        /// <summary>Order / rotation / exclusion. Items keep original page numbers and base coordinates.</summary>
+        public PageLayout Layout => Items.Layout ?? PageLayout.Identity(Pages.Count);
+
+        public int BaseOf(int view) => Layout.BaseOf(view);
+        public int ViewOf(int basePage) => Layout.ViewOf(basePage);
+        public int RotationOfView(int view) => Layout.RotationOf(Layout.BaseOf(view));
+
+        /// <summary>Size of the page at view position <paramref name="view"/> as it is displayed (user rotation applied).</summary>
+        public (double W, double H) ViewSize(int view)
+        {
+            int b = Layout.BaseOf(view);
+            return Kuronuri.Core.Geometry.CoordMap.ViewSize(Layout.RotationOf(b), Pages[b].Width, Pages[b].Height);
+        }
 
         // ------------------------------------------------------------------ selection
 
@@ -131,6 +147,7 @@ namespace Kuronuri.App
                         var pages = ReadPages(doc);
                         var s = new DocumentSession(worker, doc, SourceKind.Review, path, review.Original, review.Project.Original, pages, review.Project.Style);
                         s.Items.Reset(review.Project.Items);
+                        s.Items.ResetLayout(review.Project.EffectiveLayout);
                         s.Undo.Clear();
                         s.Warnings = ReadWarnings(doc);
                         return s;
@@ -147,6 +164,7 @@ namespace Kuronuri.App
                 }
                 var session = new DocumentSession(worker, file, SourceKind.Original, path, null,
                     new OriginalInfo(sha, len, Path.GetFileName(path)), pagesO, defaultStyle);
+                session.Items.ResetLayout(PageLayout.Identity(pagesO.Count));
                 session.Undo.Clear();
                 session.Warnings = ReadWarnings(file);
                 return session;

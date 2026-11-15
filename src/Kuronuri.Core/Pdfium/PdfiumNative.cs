@@ -79,6 +79,7 @@ namespace Kuronuri.Core.Pdfium
         // ---- fpdf_edit.h
         [DllImport(Dll)] public static extern IntPtr FPDF_CreateNewDocument();
         [DllImport(Dll)] public static extern int FPDFPage_GetRotation(IntPtr page);   // 0,1,2,3 = 0,90,180,270 (clockwise)
+        [DllImport(Dll)] public static extern void FPDFPage_SetRotation(IntPtr page, int rotate);   // returns void in fpdf_edit.h
         [DllImport(Dll)] public static extern int FPDFPage_CountObjects(IntPtr page);
         [DllImport(Dll)] public static extern IntPtr FPDFPage_GetObject(IntPtr page, int index);
         [DllImport(Dll)] public static extern int FPDFPageObj_GetType(IntPtr pageObject);

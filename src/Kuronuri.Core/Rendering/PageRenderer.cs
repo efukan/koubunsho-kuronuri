@@ -69,21 +69,22 @@ namespace Kuronuri.Core.Rendering
         }
 
         /// <summary>Renders the whole page into a BGRx buffer of wpx*hpx*4 bytes (white background).</summary>
-        public static void RenderFull(IntPtr page, IntPtr buffer, int wpx, int hpx) =>
-            RenderRegion(page, buffer, wpx, hpx, 0, 0, wpx, hpx);
+        /// <param name="rotate">User rotation 0..3 (quarter turns clockwise, ARCHITECTURE §2.4); wpx x hpx is the rotated size.</param>
+        public static void RenderFull(IntPtr page, IntPtr buffer, int wpx, int hpx, int rotate = 0) =>
+            RenderRegion(page, buffer, wpx, hpx, 0, 0, wpx, hpx, rotate);
 
         /// <summary>
         /// Renders only the region [rx, rx+rw) x [ry, ry+rh) of a page that is conceptually fullW x fullH pixels,
         /// into a BGRx buffer of rw*rh*4 bytes. Pixel (0,0) of the buffer is pixel (rx, ry) of the full rendering.
         /// </summary>
-        public static void RenderRegion(IntPtr page, IntPtr buffer, int fullW, int fullH, int rx, int ry, int rw, int rh)
+        public static void RenderRegion(IntPtr page, IntPtr buffer, int fullW, int fullH, int rx, int ry, int rw, int rh, int rotate = 0)
         {
             IntPtr bmp = PdfiumNative.FPDFBitmap_CreateEx(rw, rh, PdfiumNative.FPDFBitmap_BGRx, buffer, rw * 4);
             if (bmp == IntPtr.Zero) throw new InvalidOperationException("FPDFBitmap_CreateEx failed");
             try
             {
                 PdfiumNative.FPDFBitmap_FillRect(bmp, 0, 0, rw, rh, 0xFFFFFFFF);
-                PdfiumNative.FPDF_RenderPageBitmap(bmp, page, -rx, -ry, fullW, fullH, 0, RenderFlags);
+                PdfiumNative.FPDF_RenderPageBitmap(bmp, page, -rx, -ry, fullW, fullH, rotate & 3, RenderFlags);
             }
             finally { PdfiumNative.FPDFBitmap_Destroy(bmp); }
         }
@@ -97,14 +98,16 @@ namespace Kuronuri.Core.Rendering
         public double Sx, Sy;
         public IntPtr Ptr => _buf.Ptr;
 
-        public static Raster Render(IntPtr page, double dpi)
+        /// <param name="rotate">User rotation (ARCHITECTURE §2.4); pixel access is then in view coordinates.</param>
+        public static Raster Render(IntPtr page, double dpi, int rotate = 0)
         {
             var r = new Raster();
             double wd = PdfiumNative.FPDF_GetPageWidthF(page), hd = PdfiumNative.FPDF_GetPageHeightF(page);
+            (wd, hd) = Geometry.CoordMap.ViewSize(rotate, wd, hd);
             PageRenderer.PixelSize(wd, hd, dpi, long.MaxValue, out r.W, out r.H, out _);
             r.Sx = r.W / wd; r.Sy = r.H / hd;
             r._buf.Ensure((long)r.W * r.H * 4);
-            PageRenderer.RenderFull(page, r._buf.Ptr, r.W, r.H);
+            PageRenderer.RenderFull(page, r._buf.Ptr, r.W, r.H, rotate);
             return r;
         }
 

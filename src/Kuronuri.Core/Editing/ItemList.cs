@@ -15,6 +15,13 @@ namespace Kuronuri.Core.Editing
         public event EventHandler? Changed;
 
         public IReadOnlyList<RedactionItem> Items => _items;
+
+        /// <summary>Page order / rotation / exclusion (ARCHITECTURE §4.4); null until a document sets it. Changed only by <see cref="SetLayoutCommand"/>.</summary>
+        public PageLayout? Layout { get; private set; }
+
+        public void ResetLayout(PageLayout? layout) { Layout = layout; Changed?.Invoke(this, EventArgs.Empty); }
+
+        internal void SetLayout(PageLayout layout) => Layout = layout;
         public int Count => _items.Count;
 
         public void Reset(IEnumerable<RedactionItem> items)

@@ -11,6 +11,7 @@ using Kuronuri.Core.Hybrid;
 using Kuronuri.Core.Model;
 using Kuronuri.Core.Pdfium;
 using Kuronuri.Core.Rendering;
+using Kuronuri.Core.Export;
 
 namespace Kuronuri.Core.Printing
 {
@@ -50,13 +51,19 @@ namespace Kuronuri.Core.Printing
         private readonly NativeBuffer _buf = new NativeBuffer();   // worker thread only
         private Size _paper;
         protected readonly double Dpi;
+        /// <summary>Pages in print order with their user rotation; plan items are in view coordinates (ARCHITECTURE §4.4).</summary>
+        protected readonly OutputPlan Plan;
         public int Calls;
 
-        protected PagePaginator(PdfiumWorker worker, PdfDoc doc, double dpi, Size paper)
+        protected PagePaginator(PdfiumWorker worker, PdfDoc doc, OutputPlan plan, double dpi, Size paper)
         {
-            _worker = worker; _doc = doc; Dpi = dpi; _paper = paper;
-            _pageCount = worker.Invoke(() => doc.PageCount);
+            _worker = worker; _doc = doc; Dpi = dpi; _paper = paper; Plan = plan;
+            _pageCount = plan.Pages.Count;
         }
+
+        /// <summary>All pages in their original order and orientation.</summary>
+        protected static OutputPlan IdentityPlan(PdfiumWorker worker, PdfDoc doc, IReadOnlyList<RedactionItem> items) =>
+            OutputPlan.Identity(worker.Invoke(() => FinalExporter.ReadPageInfos(doc)), items);
 
         public override bool IsPageCountValid => true;
         public override int PageCount => _pageCount;
@@ -74,12 +81,13 @@ namespace Kuronuri.Core.Printing
             Calls++;
             var (bmp, wd, hd) = _worker.Invoke(() =>
             {
-                using (var page = _doc.LoadPage(pageNumber))
+                var op = Plan.Pages[pageNumber];
+                using (var page = _doc.LoadPage(op.BasePage))
                 {
-                    double w = page.Width, h = page.Height;
+                    var (w, h) = CoordMap.ViewSize(op.Rotation, page.Width, page.Height);
                     PageRenderer.PixelSize(w, h, Dpi, 60_000_000, out int wpx, out int hpx, out _, PageRenderer.MaxEncodableSide);
                     _buf.Ensure((long)wpx * hpx * 4);
-                    PageRenderer.RenderFull(page.Handle, _buf.Ptr, wpx, hpx);
+                    PageRenderer.RenderFull(page.Handle, _buf.Ptr, wpx, hpx, op.Rotation);
                     if (!AfterRender(pageNumber, _buf.Ptr, wpx, hpx, w, h)) throw new InvalidOperationException("burn verification failed");
                     var b = BitmapSource.Create(wpx, hpx, 96, 96, PixelFormats.Bgr32, null, _buf.Ptr, checked(wpx * hpx * 4), wpx * 4);   // copies
                     b.Freeze();
@@ -116,10 +124,14 @@ namespace Kuronuri.Core.Printing
         private readonly RedactionStyle _style;
 
         public RedactedPaginator(PdfiumWorker worker, PdfDoc doc, IReadOnlyList<RedactionItem> items, RedactionStyle style, double dpi, Size paper)
-            : base(worker, doc, dpi, paper)
+            : this(worker, doc, IdentityPlan(worker, doc, items), style, dpi, paper) { }
+
+        /// <param name="plan">Built without excluded pages (they are not printed in this mode).</param>
+        public RedactedPaginator(PdfiumWorker worker, PdfDoc doc, OutputPlan plan, RedactionStyle style, double dpi, Size paper)
+            : base(worker, doc, plan, dpi, paper)
         {
             _style = style;
-            _byPage = items.GroupBy(i => i.PageIndex).ToDictionary(g => g.Key, g => (IReadOnlyList<Shape>)g.SelectMany(i => i.Shapes).ToList());
+            _byPage = plan.Items.GroupBy(i => i.PageIndex).ToDictionary(g => g.Key, g => (IReadOnlyList<Shape>)g.SelectMany(i => i.Shapes).ToList());
         }
 
         protected override bool AfterRender(int pageIndex, IntPtr buffer, int wpx, int hpx, double wd, double hd) =>
@@ -140,9 +152,13 @@ namespace Kuronuri.Core.Printing
         private static readonly Pen Border = Frozen(new Pen(Brushes.Red, 1));
 
         public ReviewPaginator(PdfiumWorker worker, PdfDoc doc, IReadOnlyList<RedactionItem> items, double dpi, Size paper, string watermark)
-            : base(worker, doc, dpi, paper)
+            : this(worker, doc, IdentityPlan(worker, doc, items), dpi, paper, watermark) { }
+
+        /// <param name="plan">Built with excluded pages (they are printed with a note).</param>
+        public ReviewPaginator(PdfiumWorker worker, PdfDoc doc, OutputPlan plan, double dpi, Size paper, string watermark)
+            : base(worker, doc, plan, dpi, paper)
         {
-            _ordered = ShapeMath.InDisplayOrder(items);
+            _ordered = plan.Items.ToList();   // already in display order
             _watermark = watermark;
         }
 
@@ -169,6 +185,13 @@ namespace Kuronuri.Core.Printing
                 var label = TextOutline.Build(HybridWriter.LabelText(k + 1, item), 8, true);
                 dc.PushTransform(new TranslateTransform(b.L, HybridWriter.LabelTop(b.T)));
                 dc.DrawGeometry(LabelBrush, null, label);
+                dc.Pop();
+            }
+            if (Plan.Pages[pageIndex].Excluded)
+            {
+                var note = TextOutline.Build(HybridWriter.ExcludedNote, 14, true);
+                dc.PushTransform(new TranslateTransform(Math.Max(4, (wd - note.Bounds.Width) / 2), 6));
+                dc.DrawGeometry(LabelBrush, null, note);
                 dc.Pop();
             }
             if (_watermark.Length > 0)

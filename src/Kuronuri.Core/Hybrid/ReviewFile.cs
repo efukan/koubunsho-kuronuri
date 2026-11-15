@@ -69,7 +69,7 @@ namespace Kuronuri.Core.Hybrid
                 {
                     try
                     {
-                        byte[] vec = HybridWriter.Build(original, json, project.Items, opt);
+                        byte[] vec = HybridWriter.Build(original, json, project.Items, opt, project.Layout);
                         WriteFile(part, vec);
                         if (ReadBackOk(part, project, json, pageCount)) return Finish(ReviewSaveMethod.Vector);
                     }
@@ -78,7 +78,7 @@ namespace Kuronuri.Core.Hybrid
                 using (var src = PdfDoc.FromBytes(original))
                 using (var fs = new FileStream(part, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
                 {
-                    HybridRasterWriter.Build(src, original, json, project.Items, fs, opt: opt);
+                    HybridRasterWriter.Build(src, original, json, project.Items, fs, opt: opt, layout: project.Layout);
                     fs.Flush(true);
                 }
                 if (!ReadBackOk(part, project, json, pageCount)) throw new InvalidOperationException("review file read-back failed");
