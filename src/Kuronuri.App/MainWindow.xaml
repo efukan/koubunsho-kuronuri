@@ -102,7 +102,7 @@
           <t:IconRadio x:Name="toolRect" Icon="&#xE739;" GroupName="tool" Checked="Tool_Checked" Tag="Rect" ToolTip="矩形 (R): ドラッグして四角く黒塗り" />
           <t:IconRadio x:Name="toolText" Icon="&#xE8D2;" GroupName="tool" Checked="Tool_Checked" Tag="Text" ToolTip="文字 (T): 文字の上をドラッグすると、その文字を行ごとに覆います" />
           <t:IconRadio x:Name="toolFree" Icon="&#xE76D;" GroupName="tool" Checked="Tool_Checked" Tag="Freehand" ToolTip="手書き (B): なぞって黒塗り（近くの線は1つの箇所にまとまります）" />
-          <t:IconRadio x:Name="toolEraser" Icon="&#xE75C;" GroupName="tool" Checked="Tool_Checked" Tag="Eraser" ToolTip="消しゴム (E): クリックした黒塗りの図形を消す" />
+          <t:IconRadio x:Name="toolEraser" Icon="&#xECC9;" GroupName="tool" Checked="Tool_Checked" Tag="Eraser" ToolTip="図形を削除 (E): クリックした黒塗りの図形を1つまるごと削除（ポインタを重ねると消える図形が赤く表示されます）" />
           <ComboBox x:Name="brushCombo" Width="78" Margin="6,0,0,0" VerticalAlignment="Center" SelectionChanged="Brush_SelectionChanged" ToolTip="フリーハンドの太さ ( [ / ] )" />
         </StackPanel>
         <Border Style="{StaticResource BarSeparator}" />

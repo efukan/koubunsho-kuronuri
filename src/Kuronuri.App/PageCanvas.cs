@@ -62,6 +62,8 @@ namespace Kuronuri.App
         private static readonly Brush HighlightBrush = Frozen(new SolidColorBrush(Color.FromRgb(255, 200, 0)));
         private static readonly Brush SearchFill = Frozen(new SolidColorBrush(Color.FromArgb(70, 255, 200, 0)));
         private static readonly Brush SearchBorder = Frozen(new SolidColorBrush(Color.FromRgb(230, 140, 0)));
+        private static readonly Brush EraseFill = Frozen(new SolidColorBrush(Color.FromArgb(120, 220, 30, 30)));
+        private static readonly Brush EraseEdge = Frozen(new SolidColorBrush(Color.FromRgb(220, 30, 30)));
         private static readonly Typeface BadgeFace = new Typeface(new FontFamily("Yu Gothic UI, Meiryo, MS Gothic"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
         private const double HandleDip = 8;
@@ -355,6 +357,13 @@ namespace Kuronuri.App
             foreach (var r in Host.SearchHighlightFor(page))
                 dc.DrawRectangle(SearchFill, new Pen(SearchBorder, 2 / k), new Rect(r.X, r.Y, r.W, r.H).Inflated(1 / k));
 
+            // Delete-shape tool: the shape a click would remove (ARCHITECTURE §11.2).
+            if (Host.Tool == Tool.Eraser && _hoverItem is Guid hid)
+            {
+                var target = onPage.FirstOrDefault(i => i.Id == hid);
+                if (target != null && _hoverShape >= 0 && _hoverShape < target.Shapes.Count) DrawEraseTarget(dc, target.Shapes[_hoverShape], k);
+            }
+
             if (dragPage) DrawPreviews(dc, k);   // the drag in progress
             dc.Pop();   // base -> view
             foreach (var b in badges) DrawBadge(dc, b.Number, b.Code, b.Box.L, b.Box.T, k, b.Warn);   // upright, in view coordinates
@@ -382,6 +391,19 @@ namespace Kuronuri.App
                 var pen = new Pen(PreviewFill, Host!.BrushPt) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
                 dc.DrawGeometry(null, pen, ReviewPaginator.StrokeGeometry(new StrokeShape(_stroke, Host.BrushPt)));
             }
+        }
+
+        private static void DrawEraseTarget(DrawingContext dc, Shape shape, double k)
+        {
+            if (shape is RectShape r)
+            {
+                dc.DrawRectangle(EraseFill, new Pen(EraseEdge, 2 / k), new Rect(r.X, r.Y, Math.Max(0, r.W), Math.Max(0, r.H)).Inflated(1 / k));
+                return;
+            }
+            var st = (StrokeShape)shape;
+            var geo = ReviewPaginator.StrokeGeometry(st);
+            dc.DrawGeometry(null, new Pen(EraseEdge, st.WidthPt + 4 / k) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round }, geo);
+            dc.DrawGeometry(null, new Pen(EraseFill, st.WidthPt) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round }, geo);
         }
 
         private static void DrawShapes(DrawingContext dc, IEnumerable<Shape> shapes, RedactionStyle style, Brush brush, double k)
@@ -557,11 +579,9 @@ namespace Kuronuri.App
                     break;
                 case Tool.Eraser:
                 {
-                    foreach (var item in s.Items.Items.Where(i => i.PageIndex == BasePage).Reverse())
-                    {
-                        int idx = ShapeOps.HitShape(item, p, tol);
-                        if (idx >= 0) { Host.Execute(EditOps.EraseShape(item, idx)); break; }
-                    }
+                    var (hit, idx) = HitShapeAt(s, p, tol);
+                    if (hit != null) Host.Execute(EditOps.EraseShape(hit, idx));
+                    SetHover(null, -1);   // shown again on the next move
                     break;
                 }
             }
@@ -648,7 +668,13 @@ namespace Kuronuri.App
                 return;
             }
             if (tool == Tool.Rect || tool == Tool.Freehand) { Cursor = Cursors.Cross; return; }
-            if (tool == Tool.Eraser) { Cursor = Cursors.Hand; return; }
+            if (tool == Tool.Eraser)
+            {
+                var (hit, idx) = HitShapeAt(s, ToPage(pos), 3 / Host.View.DipPerPt);
+                SetHover(hit?.Id, idx);
+                Cursor = hit != null ? Cursors.Hand : null;
+                return;
+            }
             var single = SingleRectSelection(s);
             var p = ToPage(pos);
             var v = Host.View;
@@ -768,6 +794,34 @@ namespace Kuronuri.App
         }
 
         public bool IsDragging => _drag != DragKind.None;
+
+        // Delete-shape tool: the shape under the pointer (drawn in red so the click's effect is visible beforehand).
+        private Guid? _hoverItem;
+        private int _hoverShape = -1;
+
+        private void SetHover(Guid? item, int shape)
+        {
+            if (_hoverItem == item && _hoverShape == shape) return;
+            _hoverItem = item; _hoverShape = shape;
+            InvalidateVisual();
+        }
+
+        /// <summary>The topmost shape of the <see cref="_active"/> page under a point (base coordinates).</summary>
+        private (RedactionItem? Item, int Shape) HitShapeAt(DocumentSession s, Point2 p, double tol)
+        {
+            foreach (var item in s.Items.Items.Where(i => i.PageIndex == BasePage).Reverse())
+            {
+                int idx = ShapeOps.HitShape(item, p, tol);
+                if (idx >= 0) return (item, idx);
+            }
+            return (null, -1);
+        }
+
+        protected override void OnMouseLeave(MouseEventArgs e)
+        {
+            base.OnMouseLeave(e);
+            SetHover(null, -1);
+        }
 
         protected override void OnLostMouseCapture(MouseEventArgs e)
         {
