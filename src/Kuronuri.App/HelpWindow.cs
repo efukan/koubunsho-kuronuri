@@ -29,12 +29,12 @@ namespace Kuronuri.App
 
         private HelpWindow()
         {
-            Title = "公文書くろぬり - 使い方";
+            Title = AppInfo.NameWithVersion + " - 使い方";
             Width = 760; Height = Math.Min(820, SystemParameters.WorkArea.Height * 0.9);
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             FontFamily = (FontFamily)Application.Current.FindResource("UiFont");
             Themes.ThemeManager.Attach(this);
-            var doc = MarkdownFlow.Build(LoadGuide());
+            var doc = MarkdownFlow.Build(WithVersion(LoadGuide()));
             doc.PagePadding = new Thickness(32, 24, 32, 32);
             doc.FontFamily = FontFamily;
             doc.FontSize = 14;
@@ -42,6 +42,14 @@ namespace Kuronuri.App
             doc.SetResourceReference(FlowDocument.ForegroundProperty, "Text.Primary");
             doc.SetResourceReference(FlowDocument.BackgroundProperty, "Bg.Layer");
             Content = new FlowDocumentScrollViewer { Document = doc, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, IsToolBarVisible = false };
+        }
+
+        /// <summary>Adds the version under the first heading, as in the bundled 利用の手引き.txt (ARCHITECTURE §11.8).</summary>
+        internal static string WithVersion(string markdown)
+        {
+            string line = "対象の版: " + AppInfo.Version + (AppInfo.IsPreview ? "（プレビュー）" : "");
+            int end = markdown.StartsWith("# ", StringComparison.Ordinal) ? markdown.IndexOf('\n') : -1;
+            return end < 0 ? line + "\n\n" + markdown : markdown.Substring(0, end + 1) + "\n" + line + "\n" + markdown.Substring(end + 1);
         }
 
         private static string LoadGuide()

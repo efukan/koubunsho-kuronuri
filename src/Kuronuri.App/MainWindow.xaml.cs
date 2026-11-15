@@ -25,7 +25,7 @@ namespace Kuronuri.App
 {
     public partial class MainWindow : Window, IEditorHost
     {
-        private const string AppTitle = "公文書くろぬり";
+        private const string AppTitle = AppInfo.Name;   // dialog captions; the window title also shows the version
         private const string UnsetLabel = "（未設定）";
 
         private readonly PdfiumWorker _worker;
@@ -843,7 +843,7 @@ namespace Kuronuri.App
                 if (!zoomBox.IsKeyboardFocusWithin) zoomBox.Text = "";
                 stItems.Text = "箇所 0"; stUnset.Text = "理由未設定 0";
                 stState.Text = "ファイルが開かれていません";
-                Title = AppTitle;
+                Title = AppInfo.NameWithVersion;
                 return;
             }
             if (!pageBox.IsKeyboardFocusWithin) pageBox.Text = (_view.PageIndex + 1).ToString();
@@ -856,7 +856,7 @@ namespace Kuronuri.App
             stState.Text = s.ReviewPath != null
                 ? "確認用PDF" + (s.IsModified ? "・変更あり（未保存）" : "・保存済み")
                 : "原本" + (s.IsModified ? "・変更あり（未保存）" : "・変更なし");
-            Title = AppTitle + " - " + Path.GetFileName(s.ReviewPath ?? s.OriginalPath ?? s.DisplayFileName) + (s.IsModified ? " *" : "");
+            Title = AppInfo.NameWithVersion + " - " + Path.GetFileName(s.ReviewPath ?? s.OriginalPath ?? s.DisplayFileName) + (s.IsModified ? " *" : "");
         }
 
         // ================================================================== helpers

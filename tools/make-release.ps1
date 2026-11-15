@@ -46,7 +46,10 @@ $settingsSrc = Join-Path $root "docs/settings.default.json"
 Copy-Item $settingsSrc (Join-Path $stage "settings.json")
 
 # User guide as plain UTF-8 text with BOM (opens correctly in Notepad on every Windows version).
-$guide = Get-Content (Join-Path $root "docs/USER_GUIDE.md") -Raw -Encoding UTF8
+$guide = (Get-Content (Join-Path $root "docs/USER_GUIDE.md") -Raw -Encoding UTF8).Replace("`r`n", "`n")   # LF first; CRLF is added below
+$label = "$version" + $(if ($version.StartsWith("0.")) { "（プレビュー）" } else { "" })   # same wording as HelpWindow.WithVersion
+$nl = $guide.IndexOf("`n")
+$guide = $guide.Substring(0, $nl + 1) + "`n対象の版: $label`n" + $guide.Substring($nl + 1)
 [IO.File]::WriteAllText((Join-Path $stage "利用の手引き.txt"), $guide.Replace("`n", "`r`n"), (New-Object Text.UTF8Encoding($true)))
 
 $zip = Join-Path $dist "kuronuri-$version.zip"

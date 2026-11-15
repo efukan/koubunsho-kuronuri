@@ -38,6 +38,7 @@ namespace Kuronuri.App
             foreach (var p in TextSearch.Presets) presetCombo.Items.Add(new ComboBoxItem { Content = p.Name, Tag = p.Pattern });
             presetCombo.SelectedIndex = 0;
             stHint.Text = ToolHint(_tool);
+            startVersion.Text = AppInfo.VersionLabel;
             ApplyWindowLayout();
             InitLayout();
             UpdateScrollBars();
@@ -106,7 +107,7 @@ namespace Kuronuri.App
         private void UnexpectedError(string what, Exception ex)
         {
             bool memory = ex is OutOfMemoryException || ex is InsufficientExecutionStackException;
-            Error(what + "。\n種別: " + ex.GetType().Name + "\n\n作業中の黒塗り箇所はそのまま残っています。" +
+            Error(what + "。\n種別: " + ex.GetType().Name + "\n版: " + AppInfo.Version + "\n\n作業中の黒塗り箇所はそのまま残っています。" +
                   (memory ? "メモリが不足しています。ほかのアプリを閉じてからやり直してください。" : "もう一度やり直してください。"));
         }
 

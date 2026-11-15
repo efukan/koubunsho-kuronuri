@@ -46,8 +46,8 @@ namespace Kuronuri.App
             string kind = ex?.GetType().Name ?? "Unknown";
             try
             {
-                MessageBox.Show("予期しないエラーが発生したため、終了します。\n種別: " + kind + "\n\n保存していない変更は失われます。",
-                    "公文書くろぬり", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("予期しないエラーが発生したため、終了します。\n種別: " + kind + "\n版: " + AppInfo.Version + "\n\n保存していない変更は失われます。",
+                    AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Error);
             }
             catch { /* nothing more can be done */ }
             Environment.Exit(2);
