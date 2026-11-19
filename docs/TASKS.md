@@ -182,3 +182,4 @@
 - 結果: ビルド（Release）・全 108 テスト合格（`PrintPageRange`・ページ範囲指定の `RedactedPaginator`/`ReviewPaginator`・`PrintPreviewRenderer`（モード/スタイル切替含む）・`PrintLayout.Compute`（`FitToPaper`/`autoRotate`含む）のテストを追加）・禁止事項の検査 OK。実際の画面操作と実プリンタでの印刷は未確認。
 - [x] 手書きツールの操作性向上と表記統一（§11.1、§11.2、§11.4）: 手書き選択中にページ上のポインタ位置へ実寸の太さプレビュー（半透明円＋二重枠線）を表示し、コマンドバーの太さボタン（スライダー・0.5〜50mm 自由入力・プリセット）および `[` / `]`・Alt+ホイールで自由に太さを変えられるようにする。UI・設計書・手引きの表記を「手書き」に統一する。
 - 結果: コンパイル（Release）・`ShapeTests`（`BrushWidthStepAndParse` を含む 7 件）・禁止事項の検査 OK。実際の画面操作は未確認。
+- [x] 版を 0.9.3 にし（README の版の記載と特長も更新）、v0.9.3 のタグで GitHub Actions のリリースを作る（2026-11-19）。
