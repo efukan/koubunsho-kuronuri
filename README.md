@@ -78,7 +78,7 @@ pwsh tools/make-icon.ps1            # アプリのアイコンを作り直す
 
 - C# / WPF / .NET Framework 4.8（x64）。ビルドには .NET SDK 8 以降が必要です。
 - 第三者のライブラリは PDFium（[bblanchon/pdfium-binaries](https://github.com/bblanchon/pdfium-binaries)、`bblanchon.PDFium.Win32` 159.0.8152）だけです。開示用PDFは自前の最小 PDF ライターで書き出します。
-- 設計は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、作業の記録は [docs/TASKS.md](docs/TASKS.md) にあります。`CLAUDE.md` は AI コーディングアシスタント向けの作業指示です。
+- 設計は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、作業の記録は [docs/TASKS.md](docs/TASKS.md) にあります。`AGENTS.md`（Claude Code 向けには `CLAUDE.md` から参照）は AI コーディングアシスタント向けの作業指示です。
 
 ```
 src/Kuronuri.Core/          PDFium 層・モデル・Undo・開示用PDFの出力と検証・確認用PDF・印刷（UI 非依存）

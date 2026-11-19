@@ -1,4 +1,4 @@
-# Checks the product sources for things the app must never do (CLAUDE.md "絶対に破ってはいけない制約").
+# Checks the product sources for things the app must never do (AGENTS.md "絶対に破ってはいけない制約").
 #   pwsh tools/check-forbidden.ps1      -> exit code 0 when clean, 1 when something was found
 # Scope: src/ only (tests may use temp folders, consoles etc.).
 $ErrorActionPreference = "Stop"
