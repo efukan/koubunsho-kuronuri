@@ -103,6 +103,16 @@ tools/                      検査・配布用 ZIP・アイコンのスクリプ
   - 署名の承認（Approvers）: efukan
 - 各リリースの SHA-256 はリリースのページに記載します。
 
+### Code Signing Policy (English)
+
+- **Project**: Kuronuri (*公文書くろぬり*) is an offline Windows desktop application (MIT License) for irreversible PDF redaction, distributed free of charge as a portable ZIP archive on GitHub Releases. To uninstall, delete the extracted folder (no installer, registry keys, or AppData files are written).
+- **Build & Signing Scope**: Official release ZIP archives are built automatically from this public repository via GitHub Actions ([release.yml](.github/workflows/release.yml)). Releases are currently unsigned while applying for free open-source code signing through the SignPath Foundation. Once approved, only the binaries compiled from this repository (`Kuronuri.exe` and `Kuronuri.Core.dll`) will be signed, and the signing attribution will be added here. The bundled third-party `pdfium.dll` (from `bblanchon/pdfium-binaries`, verified by pinned SHA-256) is not signed.
+- **Team Roles** (all held by sole maintainer [@efukan](https://github.com/efukan)):
+  - **Committers & Reviewers**: `efukan`
+  - **Approvers**: `efukan`
+- **Privacy**: *This program will not transfer any information to other networked systems.*
+- **Verification**: The SHA-256 hash of each release ZIP is published on the corresponding GitHub Releases page.
+
 ## 不具合・脆弱性の報告
 
 - 不具合や要望は [Issues](https://github.com/efukan/koubunsho-kuronuri/issues) へ。**実際の文書や、その内容が分かる画面は添付しないでください。**
