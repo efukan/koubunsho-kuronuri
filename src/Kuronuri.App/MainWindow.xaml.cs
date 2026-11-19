@@ -755,37 +755,42 @@ namespace Kuronuri.App
 
         // ================================================================== print
 
-        private void PrintRedacted_Executed(object sender, ExecutedRoutedEventArgs e) => Print(review: false);
+        private void PrintRedacted_Executed(object sender, ExecutedRoutedEventArgs e) => OpenPrintPreview(review: false);
 
-        private void PrintReview_Executed(object sender, ExecutedRoutedEventArgs e)
-        {
-            if (!Confirm("「確認用として印刷」は、原本の内容をそのまま印刷します（黒塗り箇所は半透明の赤で囲むだけで、下の文字は読めます）。\n" +
-                         "印刷データにも原本の内容が残ります。庁内での確認以外には使わないでください。\n\n印刷しますか？", MessageBoxImage.Warning))
-                return;
-            Print(review: true);
-        }
+        private void PrintReview_Executed(object sender, ExecutedRoutedEventArgs e) => OpenPrintPreview(review: true);
 
-        private void Print(bool review)
+        private void OpenPrintPreview(bool review)
         {
             var s = _session;
             if (s == null || _busy) return;
             rightCanvas.CancelDrag();
-            var dlg = new PrintDialog { UserPageRangeEnabled = false };
-            if (dlg.ShowDialog() != true) return;
-            var paper = new Size(dlg.PrintableAreaWidth, dlg.PrintableAreaHeight);
-            PagePaginator pag = review
-                ? new ReviewPaginator(_worker, s.Doc, OutputPlan.Build(s.Pages, s.Items.Items.ToList(), s.Layout, includeExcluded: true), _settings.PrintDpi, paper, new HybridOptions().Watermark)
-                : new RedactedPaginator(_worker, s.Doc, OutputPlan.Build(s.Pages, s.Items.Items.ToList(), s.Layout, includeExcluded: false), s.Style, _settings.PrintDpi, paper);
+            CommitFreeText();
+            var items = s.Items.Items.ToList();
+            var redactedPlan = OutputPlan.Build(s.Pages, items, s.Layout, includeExcluded: false);
+            var reviewPlan = OutputPlan.Build(s.Pages, items, s.Layout, includeExcluded: true);
+            if (!review && redactedPlan.Pages.Count == 0)
+            {
+                Notify(InfoSeverity.Warning, "印刷できるページがありません", "すべてのページが「開示用PDFから除く」に設定されています。");
+                return;
+            }
+
+            int currentBase = s.BaseOf(_view.PageIndex);
+            var win = new PrintPreviewWindow(_worker, s.Doc, redactedPlan, reviewPlan, review, s.Style, _settings.PrintDpi, new HybridOptions().Watermark, currentBase) { Owner = this };
             _busy = true;
-            var old = Cursor;
-            Cursor = Cursors.Wait;
-            try { dlg.PrintDocument(pag, PrintJob.Name); }
-            catch (Exception ex) when (ex is InvalidOperationException || ex is System.Printing.PrintSystemException) { Error("印刷できませんでした。"); }
-            catch (Exception ex) when (Recoverable(ex)) { UnexpectedError("印刷できませんでした", ex); }
+            try
+            {
+                if (win.ShowDialog() == true && win.PrintedPages > 0)
+                {
+                    string mode = win.PrintedReview ? "確認用・" : "";
+                    string detail = mode + (win.PrintedCopies > 1
+                        ? win.PrintedPages + " ページ × " + win.PrintedCopies + " 部"
+                        : win.PrintedPages + " ページ");
+                    Notify(InfoSeverity.Success, "印刷データを送信しました", detail);
+                }
+            }
+            catch (Exception ex) when (Recoverable(ex)) { UnexpectedError("印刷プレビューを開けませんでした", ex); }
             finally
             {
-                pag.Release();
-                Cursor = old;
                 _busy = false;
                 CommandManager.InvalidateRequerySuggested();
             }

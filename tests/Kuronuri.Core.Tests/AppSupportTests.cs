@@ -6,6 +6,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Kuronuri.Core.Export;
 using Kuronuri.Core.Model;
 using Kuronuri.Core.Pdfium;
 using Kuronuri.Core.Printing;
@@ -174,6 +175,129 @@ namespace Kuronuri.Core.Tests
 
         [Fact]
         public void JobNameHasNoFileName() => Assert.Equal("Kuronuri", PrintJob.Name);
+
+        [Fact]
+        public void PrintLayoutComputeReportsScaleAndRotation()
+        {
+            var paper = new Size(794, 1123);
+            var p1 = PrintLayout.Compute(595, 842, paper);
+            Assert.False(p1.Rotated);
+            Assert.Equal(1.0, p1.Scale, 3);
+
+            var p2 = PrintLayout.Compute(842, 595, paper);
+            Assert.True(p2.Rotated);
+            Assert.Equal(1.0, p2.Scale, 3);
+
+            var p3 = PrintLayout.Compute(1191, 1684, paper);
+            Assert.False(p3.Rotated);
+            Assert.True(p3.Scale < 0.6 && p3.Scale > 0.4);
+
+            // FitToPaper enlarges a small page to fill the sheet; autoRotate=false keeps landscape unrotated.
+            var p4 = PrintLayout.Compute(100, 100, paper, PrintFitMode.FitToPaper, autoRotate: true);
+            Assert.True(p4.Scale > 5.0);
+            var r4 = p4.Transform.TransformBounds(new Rect(0, 0, p4.PageWidthDip, p4.PageHeightDip));
+            Assert.Equal(paper.Width, r4.Width, 1);
+
+            var p5 = PrintLayout.Compute(842, 595, paper, PrintFitMode.ActualOrShrink, autoRotate: false);
+            Assert.False(p5.Rotated);
+            Assert.True(p5.Scale < 0.75);
+        }
+
+        [Fact]
+        public void PrintPageRangeParsesValidAndRejectsInvalid()
+        {
+            Assert.True(PrintPageRange.TryParse("1-3, 5", 6, out var pages, out var err));
+            Assert.Null(err);
+            Assert.Equal(new[] { 0, 1, 2, 4 }, pages);
+
+            Assert.True(PrintPageRange.TryParse("１－２、４，５～６", 6, out pages, out err));
+            Assert.Null(err);
+            Assert.Equal(new[] { 0, 1, 3, 4, 5 }, pages);
+
+            Assert.True(PrintPageRange.TryParse("5, 1-3, 2-4", 6, out pages, out err));
+            Assert.Equal(new[] { 0, 1, 2, 3, 4 }, pages);
+
+            foreach (var bad in new[] { "", "   ", "0", "7", "4-2", "1,,3", "1-2-3", "abc", "1-" })
+            {
+                Assert.False(PrintPageRange.TryParse(bad, 6, out _, out err), "should fail: " + bad);
+                Assert.False(string.IsNullOrWhiteSpace(err));
+            }
+            Assert.False(PrintPageRange.TryParse("1", 0, out _, out _));
+        }
+
+        [Fact]
+        public void PaginatorsSupportPageSubsets()
+        {
+            var d = StandardData.Instance;
+            var doc = Pdf.Run(() => PdfDoc.FromBytes(d.Td.Bytes));
+            try
+            {
+                Sta(() =>
+                {
+                    var paper = new Size(793.7, 1122.5);
+                    var plan = OutputPlan.Identity(d.Pages, d.Items);
+                    var subset = new[] { 1, 3 };
+                    var red = new RedactedPaginator(Pdf.Worker, doc, plan, RedactionStyle.Black, 100, paper, subset);
+                    Assert.Equal(2, red.PageCount);
+                    long len = ToXps(red);
+                    red.Release();
+                    Assert.Equal(2, red.Calls);
+                    Assert.True(len > 5000);
+
+                    var rev = new ReviewPaginator(Pdf.Worker, doc, plan, 100, paper, "【庁内確認用・外部交付厳禁】", subset);
+                    Assert.Equal(2, rev.PageCount);
+                    long len2 = ToXps(rev);
+                    rev.Release();
+                    Assert.Equal(2, rev.Calls);
+                    Assert.True(len2 > 5000);
+
+                    Assert.Throws<ArgumentOutOfRangeException>(() =>
+                        new RedactedPaginator(Pdf.Worker, doc, plan, RedactionStyle.Black, 100, paper, new[] { 99 }));
+                });
+            }
+            finally { Pdf.Run(() => doc.Dispose()); }
+        }
+
+        [Fact]
+        public void PrintPreviewRendererRendersOnDemandAndBurnsRedactions()
+        {
+            var d = StandardData.Instance;
+            var doc = Pdf.Run(() => PdfDoc.FromBytes(d.Td.Bytes));
+            try
+            {
+                var plan = OutputPlan.Identity(d.Pages, d.Items);
+                var item = plan.Items.First(i => i.PageIndex == 0);
+                var rect = (RectShape)item.Shapes[0];
+
+                using (var redacted = new PrintPreviewRenderer(Pdf.Worker, doc, plan, review: false, RedactionStyle.Black))
+                using (var review = new PrintPreviewRenderer(Pdf.Worker, doc, plan, review: true, RedactionStyle.Black))
+                {
+                    var (bmpRed, wd, hd) = redacted.RenderPageAsync(0, 120, CancellationToken.None).GetAwaiter().GetResult();
+                    var (bmpRev, _, _) = review.RenderPageAsync(0, 120, CancellationToken.None).GetAwaiter().GetResult();
+
+                    Assert.True(bmpRed.IsFrozen);
+                    Assert.True(bmpRed.PixelWidth > 100 && bmpRed.PixelHeight > 100);
+                    Assert.Equal(bmpRed.PixelWidth, bmpRev.PixelWidth);
+
+                    // Sample the centre of the redaction rectangle: burned black in redacted mode.
+                    int sx = (int)((rect.X + rect.W / 2) / wd * bmpRed.PixelWidth);
+                    int sy = (int)((rect.Y + rect.H / 2) / hd * bmpRed.PixelHeight);
+                    var px = new byte[4];
+                    bmpRed.CopyPixels(new Int32Rect(sx, sy, 1, 1), px, 4, 0);
+                    Assert.Equal(0, px[0]);
+                    Assert.Equal(0, px[1]);
+                    Assert.Equal(0, px[2]);
+
+                    // Switching mode / style on the same renderer reuses the buffer cleanly (white-border fills interior white).
+                    var (bmpWhite, _, _) = redacted.RenderPageAsync(plan, 0, review: false, RedactionStyle.WhiteWithBorder, 120, CancellationToken.None).GetAwaiter().GetResult();
+                    bmpWhite.CopyPixels(new Int32Rect(sx, sy, 1, 1), px, 4, 0);
+                    Assert.Equal(255, px[0]);
+                    Assert.Equal(255, px[1]);
+                    Assert.Equal(255, px[2]);
+                }
+            }
+            finally { Pdf.Run(() => doc.Dispose()); }
+        }
     }
 
     public class SettingsTests
