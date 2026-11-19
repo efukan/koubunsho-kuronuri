@@ -56,7 +56,7 @@ namespace Kuronuri.App
             AddRow(form, "確定出力の解像度", _dpi);
             AddRow(form, "JPEG 品質（50〜100）", _quality);
             AddRow(form, "既定のスタイル", _style);
-            AddRow(form, "ブラシの太さ（mm, カンマ区切り）", _widths);
+            AddRow(form, "手書きの太さ候補（mm, カンマ区切り）", _widths);
             AddRow(form, "印刷の解像度", _printDpi);
             AddRow(form, "画面のテーマ", _theme);
 
@@ -108,7 +108,7 @@ namespace Kuronuri.App
                 .Select(x => double.TryParse(x, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) ? v : double.NaN).ToList();
             if (widths.Count == 0 || widths.Any(w => double.IsNaN(w) || w < 0.5 || w > 50))
             {
-                MessageBox.Show(this, "ブラシの太さは 0.5〜50 (mm) の数をカンマ区切りで指定してください。", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(this, "手書きの太さは 0.5〜50 (mm) の数をカンマ区切りで指定してください。", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
                 return false;
             }
             var presets = _rows.Where(r => !string.IsNullOrWhiteSpace(r.Code)).Select(r => new ReasonPreset(r.Code.Trim(), (r.Label ?? "").Trim())).ToList();

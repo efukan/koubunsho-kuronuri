@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
@@ -102,6 +103,11 @@ namespace Kuronuri.App
                 _view.ZoomAt(_view.Zoom * Math.Pow(1.2, e.Delta / 120.0), p.X, p.Y);
                 return;
             }
+            if ((Keyboard.Modifiers & ModifierKeys.Alt) != 0 && _tool == Tool.Freehand)
+            {
+                StepBrush(e.Delta > 0 ? +1 : -1);
+                return;
+            }
             double step = -e.Delta / 120.0 * 60;
             if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) { _view.ScrollBy(step, 0); return; }
             if (!_view.Continuous)
@@ -115,19 +121,16 @@ namespace Kuronuri.App
 
         // ================================================================== settings / combos
 
+        private DateTime _brushPopupClosedAt;
+
         private void ApplySettingsToUi()
         {
             _syncing = true;
             try
             {
-                brushCombo.Items.Clear();
-                foreach (var mm in _settings.BrushWidthsMm) brushCombo.Items.Add(new ComboBoxItem { Content = mm.ToString("0.#") + " mm", Tag = mm });
-                double curMm = ShapeOps.PtToMm(_brushPt);
-                int best = 0;
-                for (int i = 0; i < _settings.BrushWidthsMm.Count; i++)
-                    if (Math.Abs(_settings.BrushWidthsMm[i] - curMm) < Math.Abs(_settings.BrushWidthsMm[best] - curMm)) best = i;
-                brushCombo.SelectedIndex = best;
-                _brushPt = ShapeOps.MmToPt(_settings.BrushWidthsMm[best]);
+                RebuildBrushPresets();
+                double curMm = ShapeOps.ClampBrushMm(ShapeOps.PtToMm(_brushPt));
+                SetBrushMm(curMm, redraw: false);
 
                 FillReasonCombo(currentReasonCombo);
                 currentReasonCombo.SelectedIndex = IndexOfPreset(_currentReason);
@@ -135,6 +138,81 @@ namespace Kuronuri.App
             }
             finally { _syncing = false; }
             UpdateReasonEditor();
+        }
+
+        private void RebuildBrushPresets()
+        {
+            brushPresetsPanel.Children.Clear();
+            foreach (var mm in _settings.BrushWidthsMm)
+            {
+                double v = mm;
+                var b = new Button
+                {
+                    Content = v.ToString("0.#", CultureInfo.InvariantCulture) + " mm",
+                    Margin = new Thickness(0, 0, 6, 6),
+                    Padding = new Thickness(8, 3, 8, 3),
+                    MinHeight = 24,
+                    FontSize = 12,
+                };
+                b.Click += (s, e) => { SetBrushMm(v); brushPopup.IsOpen = false; };
+                brushPresetsPanel.Children.Add(b);
+            }
+        }
+
+        private void SetBrushMm(double mm, bool redraw = true)
+        {
+            double clamped = ShapeOps.ClampBrushMm(mm);
+            _brushPt = ShapeOps.MmToPt(clamped);
+            string label = clamped.ToString("0.#", CultureInfo.InvariantCulture);
+            bool prev = _syncing;
+            _syncing = true;
+            try
+            {
+                brushText.Text = label + " mm";
+                double dot = Math.Max(4, Math.Min(13, 3.5 + Math.Sqrt(clamped) * 1.6));
+                brushDot.Width = dot;
+                brushDot.Height = dot;
+                brushSlider.Value = clamped;
+                if (!brushInput.IsKeyboardFocusWithin) brushInput.Text = label;
+            }
+            finally { _syncing = prev; }
+            if (redraw) rightCanvas?.InvalidateVisual();
+        }
+
+        private void BrushBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if ((DateTime.UtcNow - _brushPopupClosedAt).TotalMilliseconds < 150) return;
+            brushPopup.IsOpen = !brushPopup.IsOpen;
+        }
+
+        private void BrushPopup_Closed(object sender, EventArgs e) => _brushPopupClosedAt = DateTime.UtcNow;
+
+        private void BrushSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_syncing || brushText == null) return;
+            SetBrushMm(brushSlider.Value);
+        }
+
+        private void BrushInput_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter) { CommitBrushInput(); brushPopup.IsOpen = false; e.Handled = true; }
+            else if (e.Key == Key.Escape) { brushPopup.IsOpen = false; e.Handled = true; }
+        }
+
+        private void BrushInput_LostFocus(object sender, RoutedEventArgs e) => CommitBrushInput();
+
+        private void CommitBrushInput()
+        {
+            if (_syncing) return;
+            if (ShapeOps.TryParseBrushMm(brushInput.Text, out double mm)) SetBrushMm(mm);
+            else brushInput.Text = ShapeOps.ClampBrushMm(ShapeOps.PtToMm(_brushPt)).ToString("0.#", CultureInfo.InvariantCulture);
+        }
+
+        private void StepBrush(int dir)
+        {
+            double next = ShapeOps.StepBrushMm(ShapeOps.PtToMm(_brushPt), dir);
+            SetBrushMm(next);
+            ShowHint("手書きの太さ: " + next.ToString("0.#", CultureInfo.InvariantCulture) + " mm");
         }
 
         private void FillReasonCombo(ComboBox combo)
@@ -150,18 +228,6 @@ namespace Kuronuri.App
             for (int i = 0; i < _settings.Reasons.Count; i++)
                 if (_settings.Reasons[i].Code == r.Code && _settings.Reasons[i].Label == r.Label) return i + 1;
             return -1;
-        }
-
-        private void Brush_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (_syncing || brushCombo.SelectedItem is not ComboBoxItem it || it.Tag is not double mm) return;
-            _brushPt = ShapeOps.MmToPt(mm);
-        }
-
-        private void StepBrush(int dir)
-        {
-            int i = Math.Max(0, Math.Min(brushCombo.Items.Count - 1, brushCombo.SelectedIndex + dir));
-            brushCombo.SelectedIndex = i;
         }
 
         private void CurrentReason_SelectionChanged(object sender, SelectionChangedEventArgs e)

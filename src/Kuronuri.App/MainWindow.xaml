@@ -103,7 +103,37 @@
           <t:IconRadio x:Name="toolText" Icon="&#xE8D2;" GroupName="tool" Checked="Tool_Checked" Tag="Text" ToolTip="文字 (T): 文字の上をドラッグすると、その文字を行ごとに覆います" />
           <t:IconRadio x:Name="toolFree" Icon="&#xE76D;" GroupName="tool" Checked="Tool_Checked" Tag="Freehand" ToolTip="手書き (B): なぞって黒塗り（近くの線は1つの箇所にまとまります）" />
           <t:IconRadio x:Name="toolEraser" Icon="&#xECC9;" GroupName="tool" Checked="Tool_Checked" Tag="Eraser" ToolTip="図形を削除 (E): クリックした黒塗りの図形を1つまるごと削除（ポインタを重ねると消える図形が赤く表示されます）" />
-          <ComboBox x:Name="brushCombo" Width="78" Margin="6,0,0,0" VerticalAlignment="Center" SelectionChanged="Brush_SelectionChanged" ToolTip="フリーハンドの太さ ( [ / ] )" />
+          <Button x:Name="brushBtn" MinWidth="78" Margin="6,0,0,0" VerticalAlignment="Center" Padding="8,4"
+                  Click="BrushBtn_Click" ToolTip="手書きの太さ ( [ / ] または手書き中に Alt+ホイール ): クリックで自由に調整">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <Ellipse x:Name="brushDot" Width="8" Height="8" Fill="{DynamicResource Text.Primary}" Margin="0,0,6,0" VerticalAlignment="Center" />
+              <TextBlock x:Name="brushText" Text="4 mm" VerticalAlignment="Center" />
+              <TextBlock Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="9" Margin="6,2,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Popup x:Name="brushPopup" PlacementTarget="{Binding ElementName=brushBtn}" Placement="Bottom" VerticalOffset="2"
+                 StaysOpen="False" AllowsTransparency="True" PopupAnimation="None" Closed="BrushPopup_Closed">
+            <Border Background="{DynamicResource Bg.Popup}" BorderBrush="{DynamicResource Stroke.Control}" BorderThickness="1"
+                    CornerRadius="{StaticResource PopupRadius}" Padding="12" Width="260">
+              <StackPanel>
+                <DockPanel Margin="0,0,0,6">
+                  <TextBlock Text="手書きの太さ" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                    <TextBox x:Name="brushInput" Width="58" TextAlignment="Right" VerticalContentAlignment="Center"
+                             KeyDown="BrushInput_KeyDown" LostFocus="BrushInput_LostFocus"
+                             ToolTip="0.5〜50 の数値を入力 (Enter で確定)" />
+                    <TextBlock Text="mm" VerticalAlignment="Center" Margin="4,0,0,0" Foreground="{DynamicResource Text.Secondary}" />
+                  </StackPanel>
+                </DockPanel>
+                <Slider x:Name="brushSlider" Minimum="0.5" Maximum="50" TickFrequency="0.5" IsSnapToTickEnabled="True"
+                        SmallChange="0.5" LargeChange="2" ValueChanged="BrushSlider_ValueChanged" Margin="0,2,0,8" />
+                <TextBlock Text="よく使う太さ" FontSize="11.5" Foreground="{DynamicResource Text.Secondary}" Margin="0,0,0,4" />
+                <WrapPanel x:Name="brushPresetsPanel" />
+                <TextBlock Text="[ / ] キーや手書き中の Alt+ホイール でも調整できます" FontSize="11"
+                           Foreground="{DynamicResource Text.Secondary}" Margin="0,8,0,0" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </Popup>
         </StackPanel>
         <Border Style="{StaticResource BarSeparator}" />
         <StackPanel Orientation="Horizontal" Margin="0,2">

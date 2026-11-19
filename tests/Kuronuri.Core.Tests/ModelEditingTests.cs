@@ -129,6 +129,35 @@ namespace Kuronuri.Core.Tests
         [Fact]
         public void MmToPt() => Assert.Equal(28.346456692913385, ShapeOps.MmToPt(10), 12);
 
+        [Fact]
+        public void BrushWidthStepAndParse()
+        {
+            Assert.Equal(0.5, ShapeOps.ClampBrushMm(0.1));
+            Assert.Equal(50.0, ShapeOps.ClampBrushMm(80));
+            Assert.Equal(3.5, ShapeOps.ClampBrushMm(3.46));
+
+            // Symmetric stepping across all grid boundaries (5, 10, 30, 50).
+            Assert.Equal(4.5, ShapeOps.StepBrushMm(4.0, +1));
+            Assert.Equal(5.0, ShapeOps.StepBrushMm(4.5, +1));
+            Assert.Equal(6.0, ShapeOps.StepBrushMm(5.0, +1));
+            Assert.Equal(5.0, ShapeOps.StepBrushMm(6.0, -1));
+            Assert.Equal(4.5, ShapeOps.StepBrushMm(5.0, -1));
+            Assert.Equal(12.0, ShapeOps.StepBrushMm(10.0, +1));
+            Assert.Equal(10.0, ShapeOps.StepBrushMm(12.0, -1));
+            Assert.Equal(35.0, ShapeOps.StepBrushMm(30.0, +1));
+            Assert.Equal(30.0, ShapeOps.StepBrushMm(35.0, -1));
+            Assert.Equal(0.5, ShapeOps.StepBrushMm(0.5, -1));
+            Assert.Equal(50.0, ShapeOps.StepBrushMm(50.0, +1));
+
+            Assert.True(ShapeOps.TryParseBrushMm("3.5", out double v) && v == 3.5);
+            Assert.True(ShapeOps.TryParseBrushMm("１２．５ｍｍ", out v) && v == 12.5);
+            Assert.True(ShapeOps.TryParseBrushMm(" 8 mm ", out v) && v == 8.0);
+            Assert.False(ShapeOps.TryParseBrushMm("", out _));
+            Assert.False(ShapeOps.TryParseBrushMm("0.4", out _));
+            Assert.False(ShapeOps.TryParseBrushMm("50.1", out _));
+            Assert.False(ShapeOps.TryParseBrushMm("abc", out _));
+        }
+
         internal static RedactionItem Item(int page, params Shape[] shapes) => new RedactionItem(Guid.NewGuid(), page, shapes, null);
     }
 

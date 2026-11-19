@@ -64,6 +64,10 @@ namespace Kuronuri.App
         private static readonly Brush SearchBorder = Frozen(new SolidColorBrush(Color.FromRgb(230, 140, 0)));
         private static readonly Brush EraseFill = Frozen(new SolidColorBrush(Color.FromArgb(120, 220, 30, 30)));
         private static readonly Brush EraseEdge = Frozen(new SolidColorBrush(Color.FromRgb(220, 30, 30)));
+        private static readonly Brush BrushHoverBlack = Frozen(new SolidColorBrush(Color.FromArgb(68, 0, 0, 0)));
+        private static readonly Brush BrushHoverWhite = Frozen(new SolidColorBrush(Color.FromArgb(148, 255, 255, 255)));
+        private static readonly Brush BrushRimLight = Frozen(new SolidColorBrush(Color.FromArgb(200, 255, 255, 255)));
+        private static readonly Brush BrushRimDark = Frozen(new SolidColorBrush(Color.FromArgb(190, 20, 20, 20)));
         private static readonly Typeface BadgeFace = new Typeface(new FontFamily("Yu Gothic UI, Meiryo, MS Gothic"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
         private const double HandleDip = 8;
@@ -364,6 +368,10 @@ namespace Kuronuri.App
                 if (target != null && _hoverShape >= 0 && _hoverShape < target.Shapes.Count) DrawEraseTarget(dc, target.Shapes[_hoverShape], k);
             }
 
+            // Freehand tool: translucent preview of the actual brush width at the pointer (ARCHITECTURE §11.2).
+            if (Host.Tool == Tool.Freehand && _drag == DragKind.None && _brushHoverPage == _active && _brushHoverPt is Point2 bp)
+                DrawBrushHover(dc, bp, Host.BrushPt, s.Style, k);
+
             if (dragPage) DrawPreviews(dc, k);   // the drag in progress
             dc.Pop();   // base -> view
             foreach (var b in badges) DrawBadge(dc, b.Number, b.Code, b.Box.L, b.Box.T, k, b.Warn);   // upright, in view coordinates
@@ -391,6 +399,16 @@ namespace Kuronuri.App
                 var pen = new Pen(PreviewFill, Host!.BrushPt) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
                 dc.DrawGeometry(null, pen, ReviewPaginator.StrokeGeometry(new StrokeShape(_stroke, Host.BrushPt)));
             }
+        }
+
+        private static void DrawBrushHover(DrawingContext dc, Point2 center, double widthPt, RedactionStyle style, double k)
+        {
+            double r = widthPt / 2;
+            var pt = new Point(center.X, center.Y);
+            var fill = style == RedactionStyle.WhiteWithBorder ? BrushHoverWhite : BrushHoverBlack;
+            // Double rim (light outer + dark inner) so the exact brush diameter stays visible on both white paper and dark text.
+            dc.DrawEllipse(fill, new Pen(BrushRimLight, 2.0 / k), pt, r, r);
+            dc.DrawEllipse(null, new Pen(BrushRimDark, 1.0 / k), pt, r, r);
         }
 
         private static void DrawEraseTarget(DrawingContext dc, Shape shape, double k)
@@ -659,6 +677,8 @@ namespace Kuronuri.App
         private void UpdateCursor(DocumentSession s, Point pos)
         {
             var tool = Host!.Tool;
+            if (tool != Tool.Eraser) SetHover(null, -1);
+            if (tool != Tool.Freehand) SetBrushHover(-1, null);
             if (tool == Tool.Hand) { Cursor = HandCursors.Open(DpiScale); return; }
             if (!Editable) { Cursor = null; return; }
             if (tool == Tool.Text)
@@ -667,7 +687,18 @@ namespace Kuronuri.App
                 Cursor = t != null && t.HitChar(ToPage(pos), 1.5 / Host.View.DipPerPt + 0.5) >= 0 ? Cursors.IBeam : Cursors.Cross;
                 return;
             }
-            if (tool == Tool.Rect || tool == Tool.Freehand) { Cursor = Cursors.Cross; return; }
+            if (tool == Tool.Rect) { Cursor = Cursors.Cross; return; }
+            if (tool == Tool.Freehand)
+            {
+                Cursor = Cursors.Cross;
+                var fp = ToPage(pos);
+                double r = Host.BrushPt / 2;
+                if (fp.X >= -r && fp.X <= BaseW + r && fp.Y >= -r && fp.Y <= BaseH + r)
+                    SetBrushHover(_active, fp);
+                else
+                    SetBrushHover(-1, null);
+                return;
+            }
             if (tool == Tool.Eraser)
             {
                 var (hit, idx) = HitShapeAt(s, ToPage(pos), 3 / Host.View.DipPerPt);
@@ -777,6 +808,7 @@ namespace Kuronuri.App
                     var stroke = ShapeOps.FinishStroke(_stroke, Host.BrushPt);
                     _stroke.Clear();
                     Host.Execute(s.Grouper.AddStroke(s.Items, BasePage, stroke, Host.CurrentReason));
+                    UpdateCursor(s, e.GetPosition(this));
                     break;
                 }
             }
@@ -799,10 +831,21 @@ namespace Kuronuri.App
         private Guid? _hoverItem;
         private int _hoverShape = -1;
 
+        // Freehand tool: translucent preview of the brush width at the pointer.
+        private int _brushHoverPage = -1;
+        private Point2? _brushHoverPt;
+
         private void SetHover(Guid? item, int shape)
         {
             if (_hoverItem == item && _hoverShape == shape) return;
             _hoverItem = item; _hoverShape = shape;
+            InvalidateVisual();
+        }
+
+        private void SetBrushHover(int page, Point2? pt)
+        {
+            if (_brushHoverPage == page && _brushHoverPt == pt) return;
+            _brushHoverPage = page; _brushHoverPt = pt;
             InvalidateVisual();
         }
 
@@ -821,6 +864,7 @@ namespace Kuronuri.App
         {
             base.OnMouseLeave(e);
             SetHover(null, -1);
+            SetBrushHover(-1, null);
         }
 
         protected override void OnLostMouseCapture(MouseEventArgs e)

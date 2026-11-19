@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text;
 
 namespace Kuronuri.Core.Model
 {
@@ -19,9 +21,62 @@ namespace Kuronuri.Core.Model
     public static class ShapeOps
     {
         public const double PtPerMm = 72.0 / 25.4;
+        public const double MinBrushMm = 0.5;
+        public const double MaxBrushMm = 50.0;
 
         public static double MmToPt(double mm) => mm * PtPerMm;
         public static double PtToMm(double pt) => pt / PtPerMm;
+
+        /// <summary>Clamps a freehand width to 0.5..50 mm and rounds to 0.1 mm.</summary>
+        public static double ClampBrushMm(double mm) => Math.Round(Clamp(mm, MinBrushMm, MaxBrushMm) * 10.0) / 10.0;
+
+        /// <summary>
+        /// Steps the freehand width up or down on a symmetric grid:
+        /// 0.5 mm in [0.5, 5], 1 mm in [5, 10], 2 mm in [10, 30], 5 mm in [30, 50].
+        /// </summary>
+        public static double StepBrushMm(double currentMm, int dir)
+        {
+            double cur = ClampBrushMm(currentMm);
+            if (dir == 0) return cur;
+            const double eps = 1e-6;
+            double step;
+            if (dir > 0)
+            {
+                step = cur < 5.0 - eps ? 0.5 : cur < 10.0 - eps ? 1.0 : cur < 30.0 - eps ? 2.0 : 5.0;
+                double next = Math.Floor(cur / step + eps) * step + step;
+                return ClampBrushMm(next);
+            }
+            else
+            {
+                step = cur <= 5.0 + eps ? 0.5 : cur <= 10.0 + eps ? 1.0 : cur <= 30.0 + eps ? 2.0 : 5.0;
+                double next = Math.Ceiling(cur / step - eps) * step - step;
+                return ClampBrushMm(next);
+            }
+        }
+
+        /// <summary>Parses a user-typed freehand width in mm (accepts optional "mm" suffix and full-width digits).</summary>
+        public static bool TryParseBrushMm(string? text, out double mm)
+        {
+            mm = 0;
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            var sb = new StringBuilder(text!.Length);
+            foreach (char c in text)
+            {
+                if (c >= '\uFF10' && c <= '\uFF19') sb.Append((char)('0' + (c - '\uFF10')));
+                else if (c == '．' || c == '。') sb.Append('.');
+                else if (c == '\u3000') sb.Append(' ');
+                else if (c == 'ｍ' || c == 'Ｍ') sb.Append('m');
+                else sb.Append(c);
+            }
+            string s = sb.ToString().Trim();
+            if (s.EndsWith("mm", StringComparison.OrdinalIgnoreCase))
+                s = s.Substring(0, s.Length - 2).Trim();
+            if (!double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) || double.IsNaN(v) || double.IsInfinity(v))
+                return false;
+            if (v < MinBrushMm || v > MaxBrushMm) return false;
+            mm = ClampBrushMm(v);
+            return true;
+        }
 
         public static BoxD Box(Shape s) => BoxD.Of(ShapeMath.Bounds(s));
         public static BoxD Box(RedactionItem item) => BoxD.Of(ShapeMath.Bounds(item));
